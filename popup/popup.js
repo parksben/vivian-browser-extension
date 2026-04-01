@@ -330,28 +330,28 @@ $('cancelBtn').addEventListener('click', async () => {
   try { await chrome.runtime.sendMessage({type:'cancel'}); } catch(_){}
 });
 
-// ── Lang toggle ───────────────────────────────────────────────────────────
-// ── Settings menu ────────────────────────────────────────────────────────
-const settingsBtn = $('settingsBtn');
-const settingsMenu = $('settingsMenu');
+// ── Settings menu (event delegation on document) ─────────────────────────
+function openSettingsMenu() {
+  const m = document.getElementById('settingsMenu');
+  if (!m) return;
+  m.style.cssText = 'display:block;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);min-width:160px;z-index:9999;border:1px solid #e2e8f0;overflow:hidden;';
+}
+function closeSettingsMenu() {
+  const m = document.getElementById('settingsMenu');
+  if (m) m.style.display = 'none';
+}
 
-settingsBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  const isOpen = settingsMenu.getAttribute('data-open') === '1';
-  if (isOpen) {
-    settingsMenu.setAttribute('data-open', '0');
-    settingsMenu.style.display = 'none';
-  } else {
-    settingsMenu.setAttribute('data-open', '1');
-    settingsMenu.style.cssText = 'display:block!important;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:160px;z-index:9999;border:1px solid #e2e8f0;';
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('#settingsBtn');
+  const menu = e.target.closest('#settingsMenu');
+  if (btn) {
+    e.stopPropagation();
+    const m = document.getElementById('settingsMenu');
+    if (m && m.style.display === 'block') closeSettingsMenu();
+    else openSettingsMenu();
+    return;
   }
-});
-
-settingsMenu.addEventListener('click', (e) => e.stopPropagation());
-
-document.addEventListener('click', () => {
-  settingsMenu.setAttribute('data-open', '0');
-  settingsMenu.style.display = 'none';
+  if (!menu) closeSettingsMenu();
 });
 
 // Lang toggle
@@ -360,7 +360,7 @@ $('langToggle').addEventListener('click', async () => {
   await chrome.storage.local.set({lang});
   applyI18n();
   if (lastData) render(lastData);
-  settingsMenu.setAttribute('data-open','0'); settingsMenu.style.display='none';
+  closeSettingsMenu();
 });
 
 // Export config
@@ -373,13 +373,13 @@ $('exportConfig').addEventListener('click', async () => {
   const a = document.createElement('a');
   a.href = url; a.download = 'clawtab-config.json'; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  settingsMenu.setAttribute('data-open','0'); settingsMenu.style.display='none';
+  closeSettingsMenu();
 });
 
 // Import config
 $('importConfig').addEventListener('click', () => {
   $('importFile').click();
-  settingsMenu.setAttribute('data-open','0'); settingsMenu.style.display='none';
+  closeSettingsMenu();
 });
 
 $('importFile').addEventListener('change', async (e) => {
