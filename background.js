@@ -566,105 +566,253 @@ async function handleAct({cmdId,payload}) {
   }
 }
 
-function describeOp(op,target,value) {
-  const t=target?`"${String(target).slice(0,30)}"`:null;
-  const v=value?`"${String(value).slice(0,30)}"`:null;
-  switch(op) {
-    case 'click':    return t?`Clicking ${t}`:'Clicking element';
-    case 'fill':     return t&&v?`Typing ${v} into ${t}`:'Filling input';
-    case 'navigate': return v?`Navigating to ${v}`:'Navigating…';
-    case 'scroll':   return `Scrolling page`;
-    case 'press':    return v?`Pressing ${v}`:'Pressing key';
-    case 'select':   return t?`Selecting in ${t}`:'Selecting option';
-    case 'hover':    return t?`Hovering ${t}`:'Hovering element';
-    case 'wait':     return `Waiting ${target||500}ms`;
-    default:         return op;
+function describeOp(op, target, value) {
+  const t = target ? `"${String(target).slice(0, 30)}"` : null;
+  const v = value  ? `"${String(value).slice(0, 30)}"` : null;
+  switch (op) {
+    case 'click':             return t ? `Clicking ${t}` : 'Clicking element';
+    case 'fill':              return t && v ? `Typing ${v} into ${t}` : 'Filling input';
+    case 'clear':             return t ? `Clearing ${t}` : 'Clearing input';
+    case 'navigate':          return v ? `Navigating to ${v}` : 'Navigating…';
+    case 'scroll':            return `Scrolling to (${target||0}, ${value||0})`;
+    case 'scroll_by':         return `Scrolling by (${target||0}, ${value||0})`;
+    case 'scroll_to_element': return t ? `Scrolling to ${t}` : 'Scrolling to element';
+    case 'press':             return v ? `Pressing ${v}` : 'Pressing key';
+    case 'select':            return t ? `Selecting in ${t}` : 'Selecting option';
+    case 'hover':             return t ? `Hovering ${t}` : 'Hovering element';
+    case 'wait':              return `Waiting ${value || target || 1000}ms`;
+    case 'wait_for':          return t ? `Waiting for ${t}` : 'Waiting for element';
+    case 'get_text':          return t ? `Reading text from ${t}` : 'Reading text';
+    case 'get_attr':          return t ? `Reading ${v||'attr'} from ${t}` : 'Reading attribute';
+    case 'new_tab':           return `Opening new tab${t ? ': '+t : ''}`;
+    case 'close_tab':         return `Closing tab ${target || ''}`;
+    case 'switch_tab':        return t ? `Switching to tab ${t}` : 'Switching tab';
+    case 'go_back':           return 'Going back';
+    case 'go_forward':        return 'Going forward';
+    case 'screenshot_element':return t ? `Capturing ${t}` : 'Capturing element';
+    case 'eval':              return 'Running script';
+    default:                  return op;
   }
 }
 
-async function executeAct(tabId,op,target,value,waitAfter) {
-  switch(op) {
+async function executeAct(tabId, op, target, value, waitAfter) {
+  switch (op) {
+
     case 'navigate': {
-      await chrome.tabs.update(tabId,{url:value||target});
-      await waitForTabLoad(tabId,15000);
-      return {op,navigatedTo:value||target};
+      await chrome.tabs.update(tabId, { url: value || target });
+      await waitForTabLoad(tabId, 15000);
+      return { op, navigatedTo: value || target };
     }
+
     case 'click': {
-      await chrome.scripting.executeScript({target:{tabId},world:'MAIN',
-        func:(sel)=>{
-          const el=document.querySelector(sel)||(()=>{
-            const els=document.querySelectorAll('*');
-            for(const e of els) if(e.textContent?.trim()===sel||e.getAttribute('aria-label')===sel) return e;
-            return null;
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (sel) => {
+          const el = document.querySelector(sel) || (() => {
+            for (const e of document.querySelectorAll('*'))
+              if (e.textContent?.trim() === sel || e.getAttribute('aria-label') === sel) return e;
           })();
-          if(!el) throw new Error(`Element not found: ${sel}`);
+          if (!el) throw new Error(`Element not found: ${sel}`);
           el.click();
-          el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
-        },args:[target]});
-      if(waitAfter) await new Promise(r=>setTimeout(r,waitAfter));
-      return {op,clicked:target};
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        }, args: [target] });
+      if (waitAfter) await new Promise(r => setTimeout(r, waitAfter));
+      return { op, clicked: target };
     }
+
     case 'fill': {
-      await chrome.scripting.executeScript({target:{tabId},world:'MAIN',
-        func:(sel,val)=>{
-          const el=document.querySelector(sel);
-          if(!el) throw new Error(`Element not found: ${sel}`);
-          el.focus();
-          el.value=val;
-          ['input','change','keyup'].forEach(ev=>el.dispatchEvent(new Event(ev,{bubbles:true})));
-        },args:[target,value||'']});
-      if(waitAfter) await new Promise(r=>setTimeout(r,waitAfter));
-      return {op,filled:target,value};
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (sel, val) => {
+          const el = document.querySelector(sel);
+          if (!el) throw new Error(`Element not found: ${sel}`);
+          el.focus(); el.value = val;
+          ['input', 'change', 'keyup'].forEach(ev => el.dispatchEvent(new Event(ev, { bubbles: true })));
+        }, args: [target, value || ''] });
+      if (waitAfter) await new Promise(r => setTimeout(r, waitAfter));
+      return { op, filled: target, value };
     }
+
+    case 'clear': {
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) throw new Error(`Element not found: ${sel}`);
+          el.focus(); el.value = '';
+          ['input', 'change'].forEach(ev => el.dispatchEvent(new Event(ev, { bubbles: true })));
+        }, args: [target] });
+      if (waitAfter) await new Promise(r => setTimeout(r, waitAfter));
+      return { op, cleared: target };
+    }
+
     case 'press': {
-      await chrome.scripting.executeScript({target:{tabId},world:'MAIN',
-        func:(key)=>{
-          const focused=document.activeElement||document.body;
-          ['keydown','keypress','keyup'].forEach(ev=>focused.dispatchEvent(new KeyboardEvent(ev,{key,code:key,bubbles:true})));
-        },args:[value||target]});
-      if(waitAfter) await new Promise(r=>setTimeout(r,waitAfter));
-      return {op,pressed:value||target};
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (key) => {
+          const el = document.activeElement || document.body;
+          ['keydown', 'keypress', 'keyup'].forEach(ev =>
+            el.dispatchEvent(new KeyboardEvent(ev, { key, code: key, bubbles: true, cancelable: true })));
+        }, args: [value || target] });
+      if (waitAfter) await new Promise(r => setTimeout(r, waitAfter));
+      return { op, pressed: value || target };
     }
-    case 'scroll': {
-      await chrome.scripting.executeScript({target:{tabId},world:'MAIN',
-        func:(x,y)=>window.scrollTo({left:x,top:y,behavior:'smooth'}),args:[target||0,value||0]});
-      await new Promise(r=>setTimeout(r,600));
-      return {op,scrolledTo:{x:target,y:value}};
-    }
+
     case 'select': {
-      await chrome.scripting.executeScript({target:{tabId},world:'MAIN',
-        func:(sel,val)=>{
-          const el=document.querySelector(sel);
-          if(!el) throw new Error(`Select not found: ${sel}`);
-          el.value=val;
-          el.dispatchEvent(new Event('change',{bubbles:true}));
-        },args:[target,value]});
-      return {op,selected:value};
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (sel, val) => {
+          const el = document.querySelector(sel);
+          if (!el) throw new Error(`Select not found: ${sel}`);
+          el.value = val;
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, args: [target, value] });
+      return { op, selected: value };
     }
+
     case 'hover': {
-      await chrome.scripting.executeScript({target:{tabId},world:'MAIN',
-        func:(sel)=>{
-          const el=document.querySelector(sel);
-          if(!el) throw new Error(`Element not found: ${sel}`);
-          el.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));
-          el.dispatchEvent(new MouseEvent('mouseenter',{bubbles:true}));
-        },args:[target]});
-      if(waitAfter) await new Promise(r=>setTimeout(r,waitAfter));
-      return {op,hovered:target};
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) throw new Error(`Element not found: ${sel}`);
+          ['mouseover', 'mouseenter', 'mousemove'].forEach(ev =>
+            el.dispatchEvent(new MouseEvent(ev, { bubbles: true })));
+        }, args: [target] });
+      if (waitAfter) await new Promise(r => setTimeout(r, waitAfter));
+      return { op, hovered: target };
     }
+
+    case 'scroll': {
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (x, y) => window.scrollTo({ left: x, top: y, behavior: 'smooth' }),
+        args: [Number(target) || 0, Number(value) || 0] });
+      await new Promise(r => setTimeout(r, 600));
+      return { op, scrolledTo: { x: Number(target) || 0, y: Number(value) || 0 } };
+    }
+
+    case 'scroll_by': {
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (dx, dy) => window.scrollBy({ left: dx, top: dy, behavior: 'smooth' }),
+        args: [Number(target) || 0, Number(value) || 0] });
+      await new Promise(r => setTimeout(r, 600));
+      return { op, scrolledBy: { x: Number(target) || 0, y: Number(value) || 0 } };
+    }
+
+    case 'scroll_to_element': {
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (sel, block) => {
+          const el = document.querySelector(sel);
+          if (!el) throw new Error(`Element not found: ${sel}`);
+          el.scrollIntoView({ behavior: 'smooth', block: block || 'center' });
+        }, args: [target, value || 'center'] });
+      await new Promise(r => setTimeout(r, 700));
+      return { op, scrolledTo: target };
+    }
+
     case 'wait': {
-      await new Promise(r=>setTimeout(r,Number(target)||value||1000));
-      return {op,waited:Number(target)||value||1000};
+      const ms = Number(value) || Number(target) || 1000;
+      await new Promise(r => setTimeout(r, ms));
+      return { op, waited: ms };
     }
+
+    case 'wait_for': {
+      const maxMs = Number(value) || 10000;
+      const start = Date.now();
+      while (Date.now() - start < maxMs) {
+        const res = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+          func: (sel) => !!document.querySelector(sel), args: [target] });
+        if (res?.[0]?.result) return { op, found: target, waitedMs: Date.now() - start };
+        await new Promise(r => setTimeout(r, 300));
+      }
+      throw new Error(`wait_for timeout: "${target}" not found within ${maxMs}ms`);
+    }
+
+    case 'get_text': {
+      const res = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) throw new Error(`Element not found: ${sel}`);
+          return el.textContent?.trim() || el.value || el.innerText || '';
+        }, args: [target] });
+      const text = res?.[0]?.result;
+      if (text === undefined || text === null) throw new Error(`Could not read text from: ${target}`);
+      return { op, selector: target, text };
+    }
+
+    case 'get_attr': {
+      const res = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (sel, attr) => {
+          const el = document.querySelector(sel);
+          if (!el) throw new Error(`Element not found: ${sel}`);
+          return el.getAttribute(attr) ?? el[attr] ?? null;
+        }, args: [target, value || 'href'] });
+      return { op, selector: target, attr: value || 'href', attrValue: res?.[0]?.result };
+    }
+
+    case 'new_tab': {
+      const tab = await chrome.tabs.create({ url: target || value || 'about:blank', active: true });
+      if (target || value) await waitForTabLoad(tab.id, 15000);
+      S.loop.tabId = tab.id;
+      return { op, tabId: tab.id, url: target || value };
+    }
+
+    case 'close_tab': {
+      const closeId = Number(target) || tabId;
+      await chrome.tabs.remove(closeId);
+      return { op, closedTabId: closeId };
+    }
+
+    case 'switch_tab': {
+      let switchId = Number(target);
+      if (!switchId || isNaN(switchId)) {
+        const tabs = await chrome.tabs.query({});
+        const match = tabs.find(t => t.url?.includes(target) || t.title?.includes(target));
+        if (!match) throw new Error(`No tab matching: ${target}`);
+        switchId = match.id;
+      }
+      await chrome.tabs.update(switchId, { active: true });
+      S.loop.tabId = switchId;
+      const tab = await chrome.tabs.get(switchId);
+      return { op, switchedToTabId: switchId, url: tab.url, title: tab.title };
+    }
+
+    case 'go_back': {
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: () => window.history.back() });
+      await new Promise(r => setTimeout(r, waitAfter || 800));
+      return { op };
+    }
+
+    case 'go_forward': {
+      await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: () => window.history.forward() });
+      await new Promise(r => setTimeout(r, waitAfter || 800));
+      return { op };
+    }
+
+    case 'screenshot_element': {
+      const res = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) throw new Error(`Element not found: ${sel}`);
+          el.scrollIntoView({ block: 'center' });
+          const r = el.getBoundingClientRect();
+          return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+        }, args: [target] });
+      const rect = res?.[0]?.result;
+      if (!rect) throw new Error('Could not get element bounds');
+      await new Promise(r => setTimeout(r, 400));
+      const tab = await chrome.tabs.get(tabId);
+      const screenshot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 80 });
+      return { op, screenshot, elementRect: rect, selector: target };
+    }
+
     case 'eval': {
-      const res=await chrome.scripting.executeScript({target:{tabId},world:'MAIN',
-        func:(code)=>{ try{return{ok:true,value:eval(code)};}catch(e){return{ok:false,error:e.message};} },
-        args:[value||target]});
-      const r=res?.[0]?.result;
-      if(!r?.ok) throw new Error(r?.error||'eval failed');
-      return {op,result:typeof r.value==='object'?JSON.stringify(r.value):String(r.value??'')};
+      const res = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN',
+        func: (code) => { try { return { ok: true, value: eval(code) }; } catch (e) { return { ok: false, error: e.message }; } },
+        args: [value || target] });
+      const r = res?.[0]?.result;
+      if (!r?.ok) throw new Error(r?.error || 'eval failed');
+      return { op, result: typeof r.value === 'object' ? JSON.stringify(r.value) : String(r.value ?? '') };
     }
-    default: throw new Error(`Unknown op: ${op}`);
+
+    default:
+      throw new Error(`Unknown op: ${op}`);
   }
 }
 
