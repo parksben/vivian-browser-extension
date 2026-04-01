@@ -109,6 +109,7 @@ function broadcastStatus() {
     type: 'status_update',
     wsConnected: S.wsConnected,
     pairingPending: S.pairingPending,
+    deviceId: S.deviceIdentity?.id || '',
     browserId: S.browserId,
     wsUrl: S.wsUrl,
     tabCount: S.tabCount,
@@ -131,7 +132,8 @@ function broadcastStatus() {
 
 function setLoopStatus(status, statusText, extra = {}) {
   S.loop.status = status;
-  S.loop.statusText = statusText;
+  // statusText 是动态内容（如操作描述），留空则 popup 用 i18n
+  S.loop.statusText = statusText || '';
   Object.assign(S.loop, extra);
   const iconState = ['perceiving','thinking','acting'].includes(status)
     ? status : S.wsConnected ? 'connected' : 'idle';
@@ -726,7 +728,9 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
         wsDisconnect(); S.wsConnected=false; drawIcon('idle'); broadcastStatus();
         sendResponse({ok:true}); break;
       case 'get_status':
-        sendResponse({wsConnected:S.wsConnected,pairingPending:S.pairingPending,browserId:S.browserId,
+        sendResponse({wsConnected:S.wsConnected,pairingPending:S.pairingPending,
+          deviceId:S.deviceIdentity?.id||'',
+          browserId:S.browserId,
           wsUrl:S.wsUrl,tabCount:S.tabCount,lastCmd:S.lastCmd,loop:{
             status:S.loop.status,goal:S.loop.goal,agentId:S.loop.agentId,
             stepIndex:S.loop.stepIndex,history:S.loop.history.slice(-8),

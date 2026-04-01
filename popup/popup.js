@@ -9,18 +9,50 @@ const I18N = {
     connect: 'Connect', disconnect: 'Disconnect',
     browserIdLabel: 'Browser ID', tabsLabel: 'Tabs',
     cancel: 'Cancel Task',
-    idle: 'Ready', perceiving: 'Analyzing page…', thinking: 'Thinking…',
-    acting: 'Executing…', done: 'Done', failed: 'Failed', cancelled: 'Cancelled',
-    pairingMsg: '⏳ Waiting for pairing approval. Run on your Gateway:',
+    idle: 'Ready',
+    perceiving: 'Analyzing page…',
+    thinking: 'Thinking…',
+    acting: 'Executing…',
+    done: 'Task complete',
+    failed: 'Task failed',
+    cancelled: 'Cancelled',
+    // pairing
+    pairingTitle: '🔗 Pairing required',
+    pairingDesc: 'Send this pairing code to your OpenClaw agent to complete the setup:',
+    pairingCmd: 'Or run on your Gateway:',
+    // loop status texts
+    loopIdle: 'Ready — waiting for instructions',
+    loopPerceiving: 'Capturing page snapshot…',
+    loopThinking: 'Analyzing result',
+    loopActing: 'Executing action',
+    loopDone: 'All done ✅',
+    loopFailed: 'Something went wrong',
+    loopCancelled: 'Task cancelled',
   },
   zh: {
     config: '连接配置', browserName: '浏览器名称', browserNameHint: '（标识）',
     connect: '保存并连接', disconnect: '断开',
     browserIdLabel: '标识', tabsLabel: '标签页',
     cancel: '取消任务',
-    idle: '就绪', perceiving: '分析页面中…', thinking: '思考中…',
-    acting: '执行操作中…', done: '完成', failed: '失败', cancelled: '已取消',
-    pairingMsg: '⏳ 等待配对批准，在 Gateway 上运行：',
+    idle: '就绪',
+    perceiving: '分析页面中…',
+    thinking: '思考中…',
+    acting: '执行操作中…',
+    done: '任务完成',
+    failed: '任务失败',
+    cancelled: '已取消',
+    // pairing
+    pairingTitle: '🔗 需要配对',
+    pairingDesc: '将以下配对码发送给 OpenClaw Agent 完成绑定：',
+    pairingCmd: '或在 Gateway 上运行：',
+    // loop status texts
+    loopIdle: '就绪，等待指令',
+    loopPerceiving: '正在截图并分析页面…',
+    loopThinking: '正在分析结果',
+    loopActing: '正在执行操作',
+    loopDone: '全部完成 ✅',
+    loopFailed: '任务遇到错误',
+    loopCancelled: '任务已取消',
   },
 };
 let lang = 'en';
@@ -64,7 +96,24 @@ function render(data) {
   // Pairing banner
   if (pairingPending) {
     $('pairingBanner').style.display = '';
-    $('pairingBanner').innerHTML = `${t('pairingMsg')}<br><code>openclaw devices approve</code>`;
+    const deviceId = data.deviceId || '';
+    const approveCmd = deviceId
+      ? `openclaw devices approve ${deviceId.slice(0,16)}…`
+      : 'openclaw devices approve';
+    $('pairingBanner').innerHTML = `
+      <div class="pairing-title">${t('pairingTitle')}</div>
+      <div class="pairing-desc">${t('pairingDesc')}</div>
+      ${deviceId ? `<div class="pairing-code" id="pairingCode" title="Click to copy">${deviceId.slice(0,20)}…<button class="copy-btn" data-val="${deviceId}">⎘</button></div>` : ''}
+      <div class="pairing-desc pairing-or">${t('pairingCmd')}</div>
+      <code class="pairing-cmd">${deviceId ? `openclaw devices approve ${deviceId.slice(0,8)}` : 'openclaw devices approve'}</code>
+    `;
+    // 复制按钮
+    $('pairingBanner').querySelector('.copy-btn')?.addEventListener('click', async (e) => {
+      const val = e.target.dataset.val;
+      await navigator.clipboard.writeText(`openclaw devices approve ${val}`).catch(()=>{});
+      e.target.textContent = '✓';
+      setTimeout(() => { e.target.textContent = '⎘'; }, 2000);
+    });
   } else {
     $('pairingBanner').style.display = 'none';
   }
@@ -112,13 +161,19 @@ function renderLoop(loop) {
   const stEl = $('loopStatusText');
   stEl.className = `loop-status-text ${status}`;
 
-  // 思考中加三点动画
+  // 状态文字：优先用 background 下发的 statusText，否则用 i18n
+  const loopI18nKey = {
+    idle: 'loopIdle', perceiving: 'loopPerceiving', thinking: 'loopThinking',
+    acting: 'loopActing', done: 'loopDone', failed: 'loopFailed', cancelled: 'loopCancelled',
+  }[status] || 'loopIdle';
+  const displayText = (statusText && statusText !== t(status)) ? statusText : t(loopI18nKey);
+
   if (status === 'thinking') {
     stEl.classList.add('thinking-dots');
-    stEl.textContent = t('thinking').replace('…', '');
+    stEl.textContent = t('loopThinking').replace('…','').replace('中','');
   } else {
     stEl.classList.remove('thinking-dots');
-    stEl.textContent = statusText || t(status) || status;
+    stEl.textContent = displayText;
   }
 
   // Step counter
