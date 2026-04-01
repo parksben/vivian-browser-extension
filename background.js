@@ -271,9 +271,15 @@ async function wsConnect(url,token,browserId) {
         S.wsReconnectCount=0; S.wsGaveUp=false;
         clearTimeout(S.wsDisconnectTimer); S.wsDisconnectTimer=null;
         clearTimeout(S.wsReconnectTimer);
-        if (msg.payload?.auth?.deviceToken) {
-          await chrome.storage.local.set({deviceToken:msg.payload.auth.deviceToken});
+        // deviceToken 可能在不同路径
+        const dt = msg.payload?.auth?.deviceToken
+                || msg.payload?.deviceToken
+                || msg.payload?.token;
+        if (dt) {
+          await chrome.storage.local.set({deviceToken: dt});
+          console.log('[ClawTab] deviceToken saved:', dt.slice(0,12)+'...');
         }
+        console.log('[ClawTab] connect ok, payload keys:', Object.keys(msg.payload||{}));
         drawIcon('connected'); broadcastStatus();
         await ensureSession(); await syncLastSeenId();
         startPolling(); reportTabs();
