@@ -25,7 +25,7 @@ const I18N = {
     switchLang: '切换中文',
     exportConfig: 'Export config…',
     importConfig: 'Import config…',
-    exportSuccess: 'Config copied to clipboard!',
+    exportSuccess: 'Config exported!',
     importSuccess: 'Config imported!',
     importError: 'Invalid config file',
     // loop status texts
@@ -58,7 +58,7 @@ const I18N = {
     switchLang: 'Switch to English',
     exportConfig: '导出配置…',
     importConfig: '导入配置…',
-    exportSuccess: '配置已复制到剪贴板！',
+    exportSuccess: '配置已导出！',
     importSuccess: '配置已导入！',
     importError: '无效的配置文件',
     // loop status texts
@@ -344,17 +344,11 @@ $('exportConfig').addEventListener('click', async () => {
   const d = await chrome.storage.local.get(['gatewayUrl','gatewayToken','browserName']);
   const cfg = { gatewayUrl: d.gatewayUrl||'', gatewayToken: d.gatewayToken||'', browserName: d.browserName||'', _clawtab: true };
   const json = JSON.stringify(cfg, null, 2);
-  try {
-    await navigator.clipboard.writeText(json);
-    showToast(t('exportSuccess'));
-  } catch(_) {
-    // fallback: download file
-    const blob = new Blob([json], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'clawtab-config.json'; a.click();
-    URL.revokeObjectURL(url);
-  }
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'clawtab-config.json'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   settingsMenu.style.display = 'none';
 });
 
