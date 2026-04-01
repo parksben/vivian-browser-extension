@@ -122,7 +122,7 @@ function render(data) {
     : pairingPending ? t('pairingTitle')
     : reconnecting  ? t('connecting')
     : gaveUp ? t('connFailed')
-    : (wsUrl || browserId) ? t('disconnected') : t('notConfigured');
+    : t('notConfigured');
 
   // Config section: 未连接 且 不在重连中 才显示
   $('configSection').style.display = (wsConnected || reconnecting || pairingPending) ? 'none' : '';
@@ -426,7 +426,7 @@ async function fetchStatus() {
   try {
     const resp = await chrome.runtime.sendMessage({type:'get_status'});
     if (resp) render(resp);
-  } catch(_) { render({wsConnected:false,pairingPending:false,tabCount:0,loop:{status:'idle'}}); }
+  } catch(_) { render({wsConnected:false,pairingPending:false,reconnecting:false,gaveUp:false,tabCount:0,browserId:'',wsUrl:'',loop:{status:'idle'}}); }
 }
 
 // ── Background push ───────────────────────────────────────────────────────
