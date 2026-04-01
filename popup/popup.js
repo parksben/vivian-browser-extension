@@ -8,18 +8,13 @@ const I18N = {
   zh: {
     config: '连接配置',
     browserName: '浏览器名称',
-    browserNameHint: '（连接标识，可自定义）',
+    browserNameHint: '（连接标识）',
     connect: '保存并连接',
     disconnect: '断开',
-    agents: '监控 Agent',
-    agentsHint: '选择哪些 Agent 可以控制浏览器',
     status: '运行状态',
     browserIdLabel: '浏览器标识',
     tabsLabel: '监控标签页',
     lastCmd: '最后指令：',
-    loading: '加载中…',
-    noAgents: '未找到 Agent',
-    loadFailed: '加载失败',
     connected: '已连接',
     connecting: '连接中…',
     pairing: '等待配对…',
@@ -35,18 +30,13 @@ const I18N = {
   en: {
     config: 'Connection',
     browserName: 'Browser Name',
-    browserNameHint: '(custom identifier)',
+    browserNameHint: '(identifier)',
     connect: 'Connect',
     disconnect: 'Disconnect',
-    agents: 'Monitor Agents',
-    agentsHint: 'Select agents allowed to control this browser',
     status: 'Status',
     browserIdLabel: 'Browser ID',
     tabsLabel: 'Active Tabs',
     lastCmd: 'Last Command:',
-    loading: 'Loading…',
-    noAgents: 'No agents found',
-    loadFailed: 'Failed to load',
     connected: 'Connected',
     connecting: 'Connecting…',
     pairing: 'Awaiting pairing…',
@@ -82,29 +72,25 @@ function applyI18n() {
 // ── DOM refs ───────────────────────────────────────────────────────────────
 
 const $ = id => document.getElementById(id);
-const statusDot      = $('statusDot');
-const statusText     = $('statusText');
-const langBtn        = $('langBtn');
-const gatewayUrlInput  = $('gatewayUrl');
+const statusDot       = $('statusDot');
+const statusText      = $('statusText');
+const langBtn         = $('langBtn');
+const gatewayUrlInput = $('gatewayUrl');
 const gatewayTokenInput = $('gatewayToken');
 const browserNameInput  = $('browserName');
-const connectBtn     = $('connectBtn');
-const disconnectBtn  = $('disconnectBtn');
-const toggleTokenBtn = $('toggleToken');
-const statGateway    = $('statGateway');
+const connectBtn      = $('connectBtn');
+const disconnectBtn   = $('disconnectBtn');
+const toggleTokenBtn  = $('toggleToken');
+const statGateway     = $('statGateway');
 const statBrowserName = $('statBrowserName');
-const statTabs       = $('statTabs');
-const statLastCmd    = $('statLastCmd');
-const agentSection   = $('agentSection');
-const agentList      = $('agentList');
-
-const taskSection    = $('taskSection');
+const statTabs        = $('statTabs');
+const statLastCmd     = $('statLastCmd');
+const taskSection     = $('taskSection');
 const taskStatusBadge = $('taskStatusBadge');
-const taskNameEl     = $('taskName');
-const taskStepsEl    = $('taskSteps');
-const cancelTaskBtn  = $('cancelTaskBtn');
-
-const occupiedBanner = $('occupiedBanner');
+const taskNameEl      = $('taskName');
+const taskStepsEl     = $('taskSteps');
+const cancelTaskBtn   = $('cancelTaskBtn');
+const occupiedBanner  = $('occupiedBanner');
 
 // ── Task Panel ────────────────────────────────────────────────────────────
 
@@ -168,57 +154,9 @@ function updateStatusUI(status, data = {}) {
   if (data.browserName !== undefined) statBrowserName.textContent = data.browserName || '—';
   if (data.tabCount !== undefined) statTabs.textContent = data.tabCount;
   if (data.lastCommand) statLastCmd.textContent = data.lastCommand;
-
-  if (status === 'connected') {
-    agentSection.style.display = '';
-    loadAgents();
-  } else {
-    agentSection.style.display = 'none';
-  }
 }
 
 // ── Agent list ────────────────────────────────────────────────────────────
-
-async function loadAgents() {
-  agentList.innerHTML = `<div class="agent-loading">${t('loading')}</div>`;
-  try {
-    const resp = await chrome.runtime.sendMessage({ type: 'agents_list' });
-    const agents = resp?.agents || [];
-    const { selectedAgents } = await chrome.storage.local.get(['selectedAgents']);
-    const selected = new Set(selectedAgents || agents);
-
-    if (agents.length === 0) {
-      agentList.innerHTML = `<div class="agent-loading">${t('loadFailed')}</div>`;
-      return;
-    }
-
-    agentList.innerHTML = '';
-    agents.forEach(agentId => {
-      const row = document.createElement('label');
-      row.className = 'agent-row';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox'; cb.className = 'agent-cb'; cb.value = agentId;
-      cb.checked = selected.has(agentId);
-      cb.addEventListener('change', saveSelectedAgents);
-      const icon = document.createElement('span');
-      icon.className = 'agent-icon';
-      icon.textContent = agentId === 'main' ? '🤖' : agentId.includes('wechat') ? '💬' : '🔹';
-      const label = document.createElement('span');
-      label.className = 'agent-label'; label.textContent = agentId;
-      row.append(cb, icon, label);
-      agentList.appendChild(row);
-    });
-  } catch (e) {
-    agentList.innerHTML = `<div class="agent-loading">${t('loadFailed')}</div>`;
-  }
-}
-
-async function saveSelectedAgents() {
-  const selected = [...agentList.querySelectorAll('input[type=checkbox]')]
-    .filter(cb => cb.checked).map(cb => cb.value);
-  await chrome.storage.local.set({ selectedAgents: selected });
-  chrome.runtime.sendMessage({ type: 'update_selected_agents', agents: selected }).catch(() => {});
-}
 
 // ── Draft auto-save ───────────────────────────────────────────────────────
 

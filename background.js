@@ -209,11 +209,6 @@ function connect(url, token, name) {
 
     if (msg.type === 'event') {
       const payload = msg.payload || msg;
-      const agentId = payload.agentId || msg.agentId;
-      if (agentId) {
-        const { selectedAgents } = await chrome.storage.local.get(['selectedAgents']);
-        if (selectedAgents && !selectedAgents.includes(agentId)) return;
-      }
       await handleCommand(payload);
       return;
     }
@@ -250,16 +245,8 @@ function broadcastToPopup(msg) {
 }
 
 // 连接后上报浏览器信息（供 agent 查询）
-async function sendBrowserInfo() {
-  const { selectedAgents } = await chrome.storage.local.get(['selectedAgents']);
-  send({
-    type: 'browser_info',
-    browserName: wsBrowserName,
-    extensionId: chrome.runtime.id,
-    version: VERSION,
-    authorizedAgents: selectedAgents || null, // null = 全部
-    userAgent: navigator.userAgent,
-  });
+function sendBrowserInfo() {
+  send({ type: 'browser_info', browserName: wsBrowserName, extensionId: chrome.runtime.id, version: VERSION, userAgent: navigator.userAgent });
 }
 
 // ── 指令处理 ─────────────────────────────────────────────────────────────
@@ -294,13 +281,8 @@ async function handleCommand(msg) {
 // ── browser_check：agent 连接前的标准检查 ─────────────────────────────────
 async function handleBrowserCheck(msg) {
   const { checkId, agentId } = msg;
-  const { selectedAgents } = await chrome.storage.local.get(['selectedAgents']);
   const tabs = await chrome.tabs.query({});
-  const authorized = !selectedAgents || selectedAgents.includes(agentId);
-
-  // 检查是否被其他 agent 占用
   const busy = occupiedByAgent && occupiedByAgent !== agentId;
-
   const snapshot = await Promise.all(
     tabs.filter(t => t.url && !t.url.startsWith('chrome')).slice(0, 10).map(async t => {
       let screenshot = null;
@@ -310,32 +292,12 @@ async function handleBrowserCheck(msg) {
       return { id: t.id, url: t.url, title: t.title, active: t.active, screenshot };
     })
   );
-
-  send({
-    type: 'browser_check_result',
-    checkId,
-    browserName: wsBrowserName,
-    extensionVersion: VERSION,
-    authorized,
-    agentId,
-    authorizedAgents: selectedAgents || 'all',
-    busy,
-    occupiedByAgent: busy ? occupiedByAgent : null,
-    tabs: snapshot,
-    totalTabs: tabs.length,
-  });
+  send({ type: 'browser_check_result', checkId, browserName: wsBrowserName, extensionVersion: VERSION, agentId, busy, occupiedByAgent: busy ? occupiedByAgent : null, tabs: snapshot, totalTabs: tabs.length });
 }
 
 // ── task_plan：接收并执行任务计划 ─────────────────────────────────────────
 async function handleTaskPlan(msg) {
   const { taskId, taskName, agentId, steps } = msg;
-
-  // 检查权限
-  const { selectedAgents } = await chrome.storage.local.get(['selectedAgents']);
-  if (selectedAgents && !selectedAgents.includes(agentId)) {
-    send({ type: 'task_result', taskId, ok: false, error: `Agent "${agentId}" is not authorized to control this browser.` });
-    return;
-  }
 
   // 互斥锁：检查是否被其他 agent 占用
   if (occupiedByAgent && occupiedByAgent !== agentId) {
@@ -517,34 +479,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     isConnected = false; drawIcon(false); sendResponse({ ok: true });
   } else if (msg.type === 'get_status') {
     sendResponse({ status: isConnected ? 'connected' : 'disconnected', lastCommand, tabCount, wsUrl, browserName: wsBrowserName, currentTask, occupiedByAgent });
-  } else if (msg.type === 'agents_list') {
-    if (!isConnected || !ws) { sendResponse({ agents: [] }); return true; }
-    const reqId = 'agents-list-' + Date.now();
-    const timer = setTimeout(() => {
-      ws.removeEventListener('message', handler);
-      sendResponse({ agents: [] });
-    }, 8000);
-    function handler(event) {
-      try {
-        const m = JSON.parse(event.data);
-        if (m.type === 'res' && m.id === reqId) {
-          ws.removeEventListener('message', handler);
-          clearTimeout(timer);
-          // Gateway 返回格式：{ agents: [{id, agentId, name}] }
-          const raw = m.payload?.agents || m.payload?.list || [];
-          const agents = raw.map(a => a.id || a.agentId).filter(Boolean);
-          sendResponse({ agents });
-        }
-      } catch (_) {}
-    }
-    ws.addEventListener('message', handler);
-    ws.send(JSON.stringify({ type: 'req', id: reqId, method: 'agents.list', params: {} }));
-    return true;
-  } else if (msg.type === 'update_selected_agents') {
-    chrome.storage.local.set({ selectedAgents: msg.agents });
-    sendResponse({ ok: true });
-    // 授权变更后重新上报浏览器信息
-    if (isConnected) sendBrowserInfo();
   } else if (msg.type === 'task_cancel' && currentTask) {
     handleTaskCancel({ taskId: currentTask.id });
     sendResponse({ ok: true });
