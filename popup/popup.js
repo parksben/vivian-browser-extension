@@ -88,16 +88,19 @@ function render(data) {
 
   // Status badge
   const loopStatus = loop?.status || 'idle';
-  const dotClass = wsConnected ? (DOT_CLASS[loopStatus] || 'connected') : (pairingPending ? 'pairing' : '');
+  const dotClass = wsConnected ? (DOT_CLASS[loopStatus] || 'connected') : (pairingPending ? 'pairing' : 'disconnected');
   $('statusDot').className = `status-dot ${dotClass}`;
   const statusKey = wsConnected ? loopStatus : (pairingPending ? 'pairing' : 'disconnected');
   $('statusText').textContent = wsConnected
-    ? (loop?.statusText || t('loop_' + loopStatus) || t(loopStatus) || loopStatus)
+    ? (() => {
+      const keyMap = {idle:'loopIdle',perceiving:'loopPerceiving',thinking:'loopThinking',
+        acting:'loopActing',done:'loopDone',failed:'loopFailed',cancelled:'loopCancelled'};
+      return loop?.statusText || t(keyMap[loopStatus]) || loopStatus;
+    })()
     : pairingPending ? t('pairingTitle') : t('disconnected');
 
   // Config section: collapse when connected
-  if (wsConnected && !configCollapsed) { collapseConfig(true); }
-  if (!wsConnected) { collapseConfig(false); }
+  $('configSection').style.display = wsConnected ? 'none' : '';
 
   // Pairing banner
   if (pairingPending) {
@@ -187,7 +190,7 @@ function renderLoop(loop) {
 
   // Screenshot
   const swrap = $('screenshotWrap');
-  if (lastScreenshot) {
+  if (lastScreenshot && status !== 'idle') {
     swrap.style.display = '';
     $('screenshotImg').src = lastScreenshot;
     $('screenshotLabel').textContent = lastTitle || lastUrl || '';

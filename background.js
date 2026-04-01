@@ -272,8 +272,7 @@ async function wsConnect(url,token,browserId) {
         drawIcon('connected'); broadcastStatus();
         await ensureSession(); await syncLastSeenId();
         startPolling(); reportTabs();
-        // 连接后立即感知当前页面
-        captureQuickSnapshot();
+        // 不在连接时自动截图，截图只在任务执行中更新
       } else {
         const code=msg.payload?.code||'';
         if (code==='NOT_PAIRED') { S.pairingPending=true; drawIcon('connecting'); broadcastStatus(); }

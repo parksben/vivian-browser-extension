@@ -131,7 +131,7 @@ input.input-error { border-color: #ef4444; }
   width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
   background: #94a3b8;
 }
-.loop-indicator.idle       { background: #94a3b8; }
+.loop-indicator.idle       { background: #6366f1; }
 .loop-indicator.perceiving { background: #3b82f6; animation: ping 1s ease-in-out infinite; }
 .loop-indicator.thinking   { background: #8b5cf6; }
 .loop-indicator.acting     { background: #22c55e; animation: ping .8s ease-in-out infinite; }
