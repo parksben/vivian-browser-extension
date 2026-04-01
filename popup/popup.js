@@ -188,7 +188,23 @@ async function loadAgents() {
     const selected = new Set(selectedAgents || agents);
 
     if (agents.length === 0) {
-      agentList.innerHTML = `<div class="agent-loading">${t('noAgents')}</div>`;
+      // 加载失败时展示手动输入区域
+      agentList.innerHTML = `
+        <div class="agent-loading" style="margin-bottom:6px;">${t('noAgents')}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">手动添加 Agent ID：</div>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="manualAgentInput" placeholder="main" style="flex:1;font-size:12px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:8px;background:#f8fafc;outline:none;" />
+          <button id="manualAgentAdd" style="padding:5px 10px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">添加</button>
+        </div>`;
+      document.getElementById('manualAgentAdd')?.addEventListener('click', async () => {
+        const val = document.getElementById('manualAgentInput')?.value.trim();
+        if (!val) return;
+        const { selectedAgents: prev } = await chrome.storage.local.get(['selectedAgents']);
+        const next = [...new Set([...(prev || []), val])];
+        await chrome.storage.local.set({ selectedAgents: next });
+        chrome.runtime.sendMessage({ type: 'update_selected_agents', agents: next }).catch(() => {});
+        loadAgents();
+      });
       return;
     }
 
@@ -196,22 +212,15 @@ async function loadAgents() {
     agents.forEach(agentId => {
       const row = document.createElement('label');
       row.className = 'agent-row';
-
       const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.className = 'agent-cb';
-      cb.value = agentId;
+      cb.type = 'checkbox'; cb.className = 'agent-cb'; cb.value = agentId;
       cb.checked = selected.has(agentId);
       cb.addEventListener('change', saveSelectedAgents);
-
       const icon = document.createElement('span');
       icon.className = 'agent-icon';
       icon.textContent = agentId === 'main' ? '🤖' : agentId.includes('wechat') ? '💬' : '🔹';
-
       const label = document.createElement('span');
-      label.className = 'agent-label';
-      label.textContent = agentId;
-
+      label.className = 'agent-label'; label.textContent = agentId;
       row.append(cb, icon, label);
       agentList.appendChild(row);
     });

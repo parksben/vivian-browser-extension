@@ -426,17 +426,24 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ status: isConnected ? 'connected' : 'disconnected', lastCommand, tabCount, wsUrl, browserName: wsBrowserName, currentTask, occupiedByAgent });
   } else if (msg.type === 'agents_list') {
     if (!isConnected || !ws) { sendResponse({ agents: [] }); return true; }
-    const reqId = 'agents-' + Date.now();
-    const timer = setTimeout(() => sendResponse({ agents: [] }), 5000);
-    const handler = (event) => {
+    const reqId = 'agents-list-' + Date.now();
+    const timer = setTimeout(() => {
+      ws.removeEventListener('message', handler);
+      sendResponse({ agents: [] });
+    }, 8000);
+    function handler(event) {
       try {
         const m = JSON.parse(event.data);
         if (m.type === 'res' && m.id === reqId) {
-          ws.removeEventListener('message', handler); clearTimeout(timer);
-          sendResponse({ agents: (m.payload?.agents || []).map(a => a.id || a.agentId).filter(Boolean) });
+          ws.removeEventListener('message', handler);
+          clearTimeout(timer);
+          // Gateway 返回格式：{ agents: [{id, agentId, name}] }
+          const raw = m.payload?.agents || m.payload?.list || [];
+          const agents = raw.map(a => a.id || a.agentId).filter(Boolean);
+          sendResponse({ agents });
         }
       } catch (_) {}
-    };
+    }
     ws.addEventListener('message', handler);
     ws.send(JSON.stringify({ type: 'req', id: reqId, method: 'agents.list', params: {} }));
     return true;
