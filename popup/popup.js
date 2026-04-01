@@ -1,289 +1,266 @@
 /**
- * popup.js - ClawTab Popup Controller
+ * popup.js - ClawTab v3
  */
 
-// ── i18n ───────────────────────────────────────────────────────────────────
-
+// ── i18n ─────────────────────────────────────────────────────────────────
 const I18N = {
-  zh: {
-    config: '连接配置',
-    browserName: '浏览器名称',
-    browserNameHint: '（连接标识）',
-    connect: '保存并连接',
-    disconnect: '断开',
-    status: '运行状态',
-    browserIdLabel: '浏览器标识',
-    tabsLabel: '监控标签页',
-    lastCmd: '最后指令：',
-    connected: '已连接',
-    connecting: '连接中… ⏳',
-    pairing: '等待配对批准…',
-    disconnected: '未连接',
-    connecting2: '连接中…',
-    task: '任务进度',
-    cancelTask: '取消任务',
-    taskRunning: '执行中',
-    taskDone: '已完成',
-    taskFailed: '失败',
-    taskCancelled: '已取消',
-    pairingHint: '请在 Gateway 运行 openclaw devices approve 批准连接',
-  },
   en: {
-    config: 'Connection',
-    browserName: 'Browser Name',
-    browserNameHint: '(identifier)',
-    connect: 'Connect',
-    disconnect: 'Disconnect',
-    status: 'Status',
-    browserIdLabel: 'Browser ID',
-    tabsLabel: 'Active Tabs',
-    lastCmd: 'Last Command:',
-    connected: 'Connected',
-    connecting: 'Connecting… ⏳',
-    pairing: 'Awaiting pairing approval…',
-    disconnected: 'Disconnected',
-    connecting2: 'Connecting…',
-    task: 'Task Progress',
-    cancelTask: 'Cancel Task',
-    taskRunning: 'Running',
-    taskDone: 'Done',
-    taskFailed: 'Failed',
-    taskCancelled: 'Cancelled',
-    pairingHint: 'Run: openclaw devices approve on your Gateway',
-  }
+    config: 'Connection', browserName: 'Browser Name', browserNameHint: '(identifier)',
+    connect: 'Connect', disconnect: 'Disconnect',
+    browserIdLabel: 'Browser ID', tabsLabel: 'Tabs',
+    cancel: 'Cancel Task',
+    idle: 'Ready', perceiving: 'Analyzing page…', thinking: 'Thinking…',
+    acting: 'Executing…', done: 'Done', failed: 'Failed', cancelled: 'Cancelled',
+    pairingMsg: '⏳ Waiting for pairing approval. Run on your Gateway:',
+  },
+  zh: {
+    config: '连接配置', browserName: '浏览器名称', browserNameHint: '（标识）',
+    connect: '保存并连接', disconnect: '断开',
+    browserIdLabel: '标识', tabsLabel: '标签页',
+    cancel: '取消任务',
+    idle: '就绪', perceiving: '分析页面中…', thinking: '思考中…',
+    acting: '执行操作中…', done: '完成', failed: '失败', cancelled: '已取消',
+    pairingMsg: '⏳ 等待配对批准，在 Gateway 上运行：',
+  },
 };
-
-let currentLang = 'en'; // 默认英文
-
-function t(key) {
-  return I18N[currentLang]?.[key] || I18N.zh[key] || key;
-}
+let lang = 'en';
+const t = k => I18N[lang]?.[k] || I18N.en[k] || k;
 
 function applyI18n() {
-  document.querySelectorAll('[data-i18n]').forEach(el => {
-    el.textContent = t(el.dataset.i18n);
-  });
-  // 更新动态文字
-  const statusTextEl = document.getElementById('statusText');
-  if (statusTextEl && statusTextEl.dataset.status) {
-    statusTextEl.textContent = t(statusTextEl.dataset.status) || statusTextEl.dataset.status;
-  }
-  document.getElementById('langBtn').textContent = currentLang === 'zh' ? 'EN' : '中文';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  $('langBtn').textContent = lang === 'en' ? '中文' : 'EN';
 }
 
-// ── DOM refs ───────────────────────────────────────────────────────────────
-
+// ── DOM refs ──────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
-const statusDot       = $('statusDot');
-const statusText      = $('statusText');
-const langBtn         = $('langBtn');
-const gatewayUrlInput = $('gatewayUrl');
-const gatewayTokenInput = $('gatewayToken');
-const browserNameInput  = $('browserName');
-const connectBtn      = $('connectBtn');
-const disconnectBtn   = $('disconnectBtn');
-const toggleTokenBtn  = $('toggleToken');
-const statGateway     = $('statGateway');
-const statBrowserName = $('statBrowserName');
-const statTabs        = $('statTabs');
-const statLastCmd     = $('statLastCmd');
-const taskSection     = $('taskSection');
-const taskStatusBadge = $('taskStatusBadge');
-const taskNameEl      = $('taskName');
-const taskStepsEl     = $('taskSteps');
-const cancelTaskBtn   = $('cancelTaskBtn');
-const occupiedBanner  = $('occupiedBanner');
-const pairingBanner   = $('pairingBanner');
 
-// ── Task Panel ────────────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────
+let lastData = null;
+let configCollapsed = false;
 
-function renderTask(data) {
-  const { taskStatus, taskName, taskAgentId, taskSteps, taskCurrentStep, taskResults } = data;
-  if (!taskStatus || taskStatus === 'idle' || !taskSteps?.length) {
-    taskSection.style.display = 'none'; return;
-  }
-  taskSection.style.display = '';
-
-  const statusKey = { running: 'taskRunning', done: 'taskDone', failed: 'taskFailed', cancelled: 'taskCancelled' }[taskStatus] || 'taskRunning';
-  taskStatusBadge.textContent = t(statusKey);
-  taskStatusBadge.className = `task-status-badge ${taskStatus}`;
-  taskNameEl.textContent = `${taskAgentId ? '['+taskAgentId+'] ' : ''}${taskName || ''}`;
-
-  taskStepsEl.innerHTML = '';
-  taskSteps.forEach((step, i) => {
-    let s = 'pending';
-    if (taskStatus === 'done') s = (taskResults?.[i]?.ok === false) ? 'failed' : 'done';
-    else if (i < taskCurrentStep) s = (taskResults?.[i]?.ok === false) ? 'failed' : 'done';
-    else if (i === taskCurrentStep && taskStatus === 'running') s = 'running';
-
-    const row = document.createElement('div');
-    row.className = `task-step ${s}`;
-    const icons = { running:'⏳', done:'✅', failed:'❌', pending:'○' };
-    row.innerHTML = `<span class="step-icon">${icons[s]}</span><span class="step-label">${step.label || step.type}</span>`;
-    taskStepsEl.appendChild(row);
-  });
-
-  cancelTaskBtn.style.display = taskStatus === 'running' ? '' : 'none';
-}
-
-cancelTaskBtn.addEventListener('click', async () => {
-  try { await chrome.runtime.sendMessage({ type: 'task_cancel' }); } catch (_) {}
-});
-
-// ── Status UI ─────────────────────────────────────────────────────────────
-
-const STATUS_DOT = {
-  connected: 'connected',
-  connecting: 'connecting',
-  pairing: 'connecting',
-  disconnected: 'disconnected',
+// ── Status dot mapping ────────────────────────────────────────────────────
+const DOT_CLASS = {
+  connected:'connected', perceiving:'perceiving', thinking:'thinking',
+  acting:'acting', done:'done', failed:'failed', cancelled:'failed',
+  pairing:'pairing', disconnected:'',
 };
 
-function updateStatusUI(data) {
-  const connected = data.wsConnected;
-  const taskRunning = data.taskStatus === 'running';
+// ── Main render ───────────────────────────────────────────────────────────
+function render(data) {
+  lastData = data;
+  const { wsConnected, pairingPending, loop, browserId, wsUrl, tabCount } = data;
 
-  // WS 状态
-  const dotClass = taskRunning ? 'running' : connected ? 'connected' : 'disconnected';
-  statusDot.className = `status-dot ${dotClass}`;
-  statusDot.style.background = taskRunning ? '#22c55e' : '';
+  // Status badge
+  const loopStatus = loop?.status || 'idle';
+  const dotClass = wsConnected ? (DOT_CLASS[loopStatus] || 'connected') : (pairingPending ? 'pairing' : '');
+  $('statusDot').className = `status-dot ${dotClass}`;
+  const statusKey = wsConnected ? loopStatus : (pairingPending ? 'pairing' : 'disconnected');
+  $('statusText').textContent = wsConnected ? (loop?.statusText || t(loopStatus)) : (pairingPending ? t('pairingMsg').slice(0,15)+'…' : '—');
 
-  const statusKey = taskRunning ? 'taskRunning' : connected ? 'connected' : 'disconnected';
-  statusText.dataset.status = statusKey;
-  statusText.textContent = t(statusKey);
+  // Config section: collapse when connected
+  if (wsConnected && !configCollapsed) { collapseConfig(true); }
+  if (!wsConnected) { collapseConfig(false); }
 
-  // Stats
-  if (data.wsUrl) {
-    try { statGateway.textContent = new URL(data.wsUrl).host; statGateway.title = data.wsUrl; }
-    catch(_) { statGateway.textContent = data.wsUrl; }
-  } else { statGateway.textContent = '—'; }
-  statBrowserName.textContent = data.browserId || '—';
-  statTabs.textContent = data.tabCount ?? 0;
-  if (data.lastCmd) statLastCmd.textContent = data.lastCmd;
-
-  // 配对提示
-  const needsPairing = !data.wsConnected && data.pairingPending;
-  if (needsPairing) {
-    pairingBanner.style.display = '';
-    pairingBanner.innerHTML = `⏳ ${t('pairing')}<br><code>openclaw devices approve</code>`;
+  // Pairing banner
+  if (pairingPending) {
+    $('pairingBanner').style.display = '';
+    $('pairingBanner').innerHTML = `${t('pairingMsg')}<br><code>openclaw devices approve</code>`;
   } else {
-    pairingBanner.style.display = 'none';
+    $('pairingBanner').style.display = 'none';
   }
 
-  // 占用 banner
-  if (data.taskStatus === 'running' && data.taskAgentId) {
-    occupiedBanner.style.display = '';
-    occupiedBanner.textContent = `🔒 ${data.taskAgentId} · ${data.taskName || data.taskCmdId || ''}`;
-  } else { occupiedBanner.style.display = 'none'; }
+  // Loop section
+  const loopEl = $('loopSection');
+  if (wsConnected) {
+    loopEl.style.display = '';
+    renderLoop(loop);
+  } else {
+    loopEl.style.display = 'none';
+  }
 
-  // 任务面板
-  renderTask(data);
+  // Stats bar
+  const statsBar = $('statsBar');
+  if (wsConnected) {
+    statsBar.style.display = '';
+    let gw = '—';
+    try { gw = new URL(wsUrl).host; } catch(_) { gw = wsUrl || '—'; }
+    $('statGateway').textContent = gw;
+    $('statBrowserName').textContent = browserId || '—';
+    $('statTabs').textContent = tabCount ?? 0;
+  } else {
+    statsBar.style.display = 'none';
+  }
 }
 
-// ── Agent list ────────────────────────────────────────────────────────────
+function renderLoop(loop) {
+  if (!loop) return;
+  const { status, goal, agentId, stepIndex, history, lastScreenshot, lastUrl, lastTitle, statusText, errorMsg, startedAt } = loop;
+
+  // Goal
+  const goalEl = $('loopGoal');
+  if (goal) {
+    goalEl.style.display = '';
+    goalEl.textContent = `🎯 ${goal}`;
+  } else {
+    goalEl.style.display = 'none';
+  }
+
+  // Indicator + status text
+  const ind = $('loopIndicator');
+  ind.className = `loop-indicator ${status}`;
+
+  const stEl = $('loopStatusText');
+  stEl.className = `loop-status-text ${status}`;
+
+  // 思考中加三点动画
+  if (status === 'thinking') {
+    stEl.classList.add('thinking-dots');
+    stEl.textContent = t('thinking').replace('…', '');
+  } else {
+    stEl.classList.remove('thinking-dots');
+    stEl.textContent = statusText || t(status) || status;
+  }
+
+  // Step counter
+  $('loopStep').textContent = stepIndex > 0 ? `Step ${stepIndex}` : '';
+
+  // Screenshot
+  const swrap = $('screenshotWrap');
+  if (lastScreenshot) {
+    swrap.style.display = '';
+    $('screenshotImg').src = lastScreenshot;
+    $('screenshotLabel').textContent = lastTitle || lastUrl || '';
+    swrap.className = `screenshot-wrap${status === 'perceiving' ? ' scanning' : ''}`;
+  } else {
+    swrap.style.display = 'none';
+  }
+
+  // History
+  const histEl = $('historyList');
+  const recent = (history || []).slice(-6);
+  if (recent.length > 0) {
+    histEl.style.display = '';
+    histEl.innerHTML = '';
+    recent.forEach(h => {
+      const item = document.createElement('div');
+      const isLast = h === recent[recent.length - 1];
+      const running = isLast && ['acting', 'perceiving'].includes(status);
+      item.className = `history-item ${running ? 'running' : h.status}`;
+      const icon = running ? '⏳' : h.status === 'done' ? '✅' : h.status === 'failed' ? '❌' : '○';
+      const ms = h.durationMs ? `${(h.durationMs/1000).toFixed(1)}s` : '';
+      item.innerHTML = `<span class="h-icon">${icon}</span><span class="h-desc ${h.status==='failed'?'failed':''}">${escHtml(h.desc||h.op)}</span><span class="h-time">${ms}</span>`;
+      histEl.appendChild(item);
+    });
+  } else {
+    histEl.style.display = 'none';
+  }
+
+  // Cancel button
+  const cancelRow = $('cancelRow');
+  cancelRow.style.display = ['acting','perceiving','thinking'].includes(status) ? '' : 'none';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function collapseConfig(collapse) {
+  configCollapsed = collapse;
+  $('configBody').style.display = collapse ? 'none' : '';
+  $('collapseConfig').textContent = collapse ? '▸' : '▾';
+}
+
+// ── Config collapse toggle ────────────────────────────────────────────────
+$('collapseConfig').addEventListener('click', () => collapseConfig(!configCollapsed));
+
+// ── Screenshot lightbox ───────────────────────────────────────────────────
+$('screenshotWrap').addEventListener('click', () => {
+  if (!lastData?.loop?.lastScreenshot) return;
+  const lb = document.createElement('div');
+  lb.className = 'lightbox';
+  lb.innerHTML = `<img src="${lastData.loop.lastScreenshot}" />`;
+  lb.addEventListener('click', () => lb.remove());
+  document.body.appendChild(lb);
+});
 
 // ── Draft auto-save ───────────────────────────────────────────────────────
-
-let draftTimer = null;
-function scheduleDraftSave() {
+let draftTimer;
+function scheduleDraft() {
   clearTimeout(draftTimer);
-  draftTimer = setTimeout(saveDraft, 600);
+  draftTimer = setTimeout(async () => {
+    await chrome.storage.local.set({
+      gatewayUrlDraft: $('gatewayUrl').value.trim(),
+      gatewayTokenDraft: $('gatewayToken').value.trim(),
+      browserNameDraft: $('browserName').value.trim(),
+    });
+  }, 600);
 }
-
-async function saveDraft() {
-  await chrome.storage.local.set({
-    gatewayUrlDraft: gatewayUrlInput.value.trim(),
-    gatewayTokenDraft: gatewayTokenInput.value.trim(),
-    browserNameDraft: browserNameInput.value.trim(),
-  });
-}
-
-gatewayUrlInput.addEventListener('input', scheduleDraftSave);
-gatewayTokenInput.addEventListener('input', scheduleDraftSave);
-browserNameInput.addEventListener('input', scheduleDraftSave);
+['gatewayUrl','gatewayToken','browserName'].forEach(id => $(`${id}`).addEventListener('input', scheduleDraft));
 
 // ── Load config ───────────────────────────────────────────────────────────
-
 async function loadConfig() {
-  const data = await chrome.storage.local.get([
-    'gatewayUrl', 'gatewayToken', 'browserName',
-    'gatewayUrlDraft', 'gatewayTokenDraft', 'browserNameDraft',
-    'lang',
+  const d = await chrome.storage.local.get([
+    'gatewayUrl','gatewayToken','browserName',
+    'gatewayUrlDraft','gatewayTokenDraft','browserNameDraft','lang',
   ]);
-  gatewayUrlInput.value   = data.gatewayUrlDraft   || data.gatewayUrl   || '';
-  gatewayTokenInput.value = data.gatewayTokenDraft || data.gatewayToken || '';
-  browserNameInput.value  = data.browserNameDraft  || data.browserName  || '';
-  if (data.lang) currentLang = data.lang;
+  $('gatewayUrl').value   = d.gatewayUrlDraft   || d.gatewayUrl   || '';
+  $('gatewayToken').value = d.gatewayTokenDraft || d.gatewayToken || '';
+  $('browserName').value  = d.browserNameDraft  || d.browserName  || '';
+  if (d.lang) lang = d.lang;
   applyI18n();
-}
-
-// ── Fetch status ──────────────────────────────────────────────────────────
-
-async function fetchStatus() {
-  try {
-    const resp = await chrome.runtime.sendMessage({ type: 'get_status' });
-    if (resp) updateStatusUI(resp);
-  } catch (e) {
-    updateStatusUI({ wsConnected: false });
-  }
 }
 
 // ── Connect ───────────────────────────────────────────────────────────────
-
-connectBtn.addEventListener('click', async () => {
-  const url   = gatewayUrlInput.value.trim();
-  const token = gatewayTokenInput.value.trim();
-  const name  = browserNameInput.value.trim() || ('Browser-' + Math.random().toString(36).slice(2, 6));
-
-  if (!url) { gatewayUrlInput.classList.add('input-error'); setTimeout(() => gatewayUrlInput.classList.remove('input-error'), 1500); gatewayUrlInput.focus(); return; }
-  if (!token) { gatewayTokenInput.classList.add('input-error'); setTimeout(() => gatewayTokenInput.classList.remove('input-error'), 1500); gatewayTokenInput.focus(); return; }
-
-  await chrome.storage.local.set({ gatewayUrl: url, gatewayToken: token, browserName: name, gatewayUrlDraft: url, gatewayTokenDraft: token, browserNameDraft: name });
-
-  updateStatusUI('connecting', { wsUrl: url });
-  connectBtn.disabled = true;
-  connectBtn.textContent = t('connecting2');
-
-  try { await chrome.runtime.sendMessage({ type: 'connect', url, token, name }); } catch (e) {}
-
-  setTimeout(async () => {
-    connectBtn.disabled = false;
-    connectBtn.textContent = t('connect');
-    await fetchStatus();
-  }, 1500);});
-
-// ── Disconnect ────────────────────────────────────────────────────────────
-
-disconnectBtn.addEventListener('click', async () => {
-  try { await chrome.runtime.sendMessage({ type: 'disconnect' }); } catch (e) {}
-  updateStatusUI('disconnected', { tabCount: 0, lastCommand: '—' });
+$('connectBtn').addEventListener('click', async () => {
+  const url   = $('gatewayUrl').value.trim();
+  const token = $('gatewayToken').value.trim();
+  const name  = $('browserName').value.trim() || ('browser-'+Math.random().toString(36).slice(2,6));
+  if (!url)   { $('gatewayUrl').classList.add('input-error'); setTimeout(()=>$('gatewayUrl').classList.remove('input-error'),1500); return; }
+  if (!token) { $('gatewayToken').classList.add('input-error'); setTimeout(()=>$('gatewayToken').classList.remove('input-error'),1500); return; }
+  await chrome.storage.local.set({gatewayUrl:url,gatewayToken:token,browserName:name,
+    gatewayUrlDraft:url,gatewayTokenDraft:token,browserNameDraft:name});
+  $('connectBtn').disabled = true;
+  $('connectBtn').textContent = t('connecting') || 'Connecting…';
+  try { await chrome.runtime.sendMessage({type:'connect',url,token,name}); } catch(_){}
+  setTimeout(async ()=>{ $('connectBtn').disabled=false; $('connectBtn').textContent=t('connect'); await fetchStatus(); },1500);
 });
 
-// ── Toggle token visibility ───────────────────────────────────────────────
-
-toggleTokenBtn.addEventListener('click', () => {
-  gatewayTokenInput.type = gatewayTokenInput.type === 'password' ? 'text' : 'password';
+$('disconnectBtn').addEventListener('click', async () => {
+  try { await chrome.runtime.sendMessage({type:'disconnect'}); } catch(_){}
+  render({wsConnected:false,pairingPending:false,tabCount:0,loop:{status:'idle'}});
 });
 
-// ── Language toggle ───────────────────────────────────────────────────────
+$('toggleToken').addEventListener('click', () => {
+  const inp = $('gatewayToken');
+  inp.type = inp.type==='password' ? 'text' : 'password';
+});
 
-langBtn.addEventListener('click', async () => {
-  currentLang = currentLang === 'zh' ? 'en' : 'zh';
-  await chrome.storage.local.set({ lang: currentLang });
+$('cancelBtn').addEventListener('click', async () => {
+  try { await chrome.runtime.sendMessage({type:'cancel'}); } catch(_){}
+});
+
+// ── Lang toggle ───────────────────────────────────────────────────────────
+$('langBtn').addEventListener('click', async () => {
+  lang = lang==='en' ? 'zh' : 'en';
+  await chrome.storage.local.set({lang});
   applyI18n();
-  // 重新渲染 agent loading 状态文字（如果在加载中）
-  const loadingEl = agentList.querySelector('.agent-loading');
-  if (loadingEl) loadingEl.textContent = t('loading');
+  if (lastData) render(lastData);
 });
 
-// ── Background status push ────────────────────────────────────────────────
+// ── Fetch status ──────────────────────────────────────────────────────────
+async function fetchStatus() {
+  try {
+    const resp = await chrome.runtime.sendMessage({type:'get_status'});
+    if (resp) render(resp);
+  } catch(_) { render({wsConnected:false,pairingPending:false,tabCount:0,loop:{status:'idle'}}); }
+}
 
+// ── Background push ───────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(msg => {
-  if (msg.type === 'status_update') updateStatusUI(msg);
+  if (msg.type==='status_update') render(msg);
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────
-
 (async () => {
   await loadConfig();
   await fetchStatus();

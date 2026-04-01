@@ -10,87 +10,91 @@
   <!-- Header -->
   <div class="header">
     <div class="brand">
-      <div class="brand-text">
-        <span class="brand-name">ClawTab</span>
-        <span class="brand-sub">OpenClaw Browser Client</span>
-      </div>
+      <span class="brand-name">ClawTab</span>
+      <span class="brand-sub">OpenClaw Browser Client</span>
     </div>
     <div class="header-right">
-      <div class="status-badge">
+      <div class="status-badge" id="statusBadge">
         <span class="status-dot" id="statusDot"></span>
-        <span class="status-text" id="statusText">—</span>
+        <span id="statusText">—</span>
       </div>
       <button class="lang-btn" id="langBtn">中文</button>
     </div>
   </div>
 
   <div class="body">
-    <!-- Config Section -->
-    <div class="section">
-      <div class="section-title" data-i18n="config"></div>
-      <div class="form-group">
-        <label>Gateway URL</label>
-        <input type="text" id="gatewayUrl" placeholder="ws://localhost:18789" autocomplete="off" spellcheck="false" />
+
+    <!-- Connection (collapsed when connected) -->
+    <div class="section" id="configSection">
+      <div class="section-title" data-i18n="config">
+        <button class="collapse-btn" id="collapseConfig">▾</button>
       </div>
-      <div class="form-group">
-        <label>Access Token</label>
-        <div class="input-row">
-          <input type="password" id="gatewayToken" placeholder="your-gateway-token" autocomplete="off" />
-          <button class="icon-btn" id="toggleToken">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
+      <div id="configBody">
+        <div class="form-group">
+          <label>Gateway URL</label>
+          <input type="text" id="gatewayUrl" placeholder="ws://localhost:18789" autocomplete="off" spellcheck="false" />
         </div>
-      </div>
-      <div class="form-group">
-        <label><span data-i18n="browserName"></span> <span class="label-hint" data-i18n="browserNameHint"></span></label>
-        <input type="text" id="browserName" placeholder="my_work_browser" autocomplete="off" maxlength="40" />
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="connectBtn" data-i18n="connect"></button>
-        <button class="btn btn-secondary" id="disconnectBtn" data-i18n="disconnect"></button>
+        <div class="form-group">
+          <label>Access Token</label>
+          <div class="input-row">
+            <input type="password" id="gatewayToken" placeholder="your-gateway-token" autocomplete="off" />
+            <button class="icon-btn" id="toggleToken">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label><span data-i18n="browserName"></span> <span class="label-hint" data-i18n="browserNameHint"></span></label>
+          <input type="text" id="browserName" placeholder="my_work_browser" autocomplete="off" maxlength="40" />
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="connectBtn" data-i18n="connect"></button>
+          <button class="btn btn-secondary" id="disconnectBtn" data-i18n="disconnect"></button>
+        </div>
       </div>
     </div>
 
-    <!-- Task Section（有任务时展示） -->
-    <div class="section" id="taskSection" style="display:none;">
-      <div class="section-title">
-        <span data-i18n="task"></span>
-        <span class="task-status-badge" id="taskStatusBadge"></span>
+    <!-- Pairing banner -->
+    <div id="pairingBanner" class="pairing-banner" style="display:none;"></div>
+
+    <!-- Agent Loop Panel (shown when connected) -->
+    <div class="section loop-section" id="loopSection" style="display:none;">
+
+      <!-- Goal -->
+      <div class="loop-goal" id="loopGoal" style="display:none;"></div>
+
+      <!-- Status line with animation -->
+      <div class="loop-status-row" id="loopStatusRow">
+        <span class="loop-indicator" id="loopIndicator"></span>
+        <span class="loop-status-text" id="loopStatusText" data-i18n="idle"></span>
+        <span class="loop-step" id="loopStep"></span>
       </div>
-      <div id="taskName" class="task-name"></div>
-      <div id="taskSteps" class="task-steps"></div>
-      <div class="task-actions">
-        <button class="btn btn-danger" id="cancelTaskBtn" data-i18n="cancelTask"></button>
+
+      <!-- Current screenshot -->
+      <div class="screenshot-wrap" id="screenshotWrap" style="display:none;">
+        <img id="screenshotImg" class="screenshot-img" alt="Page snapshot" />
+        <div class="screenshot-label" id="screenshotLabel"></div>
+      </div>
+
+      <!-- History -->
+      <div class="history-list" id="historyList" style="display:none;"></div>
+
+      <!-- Cancel -->
+      <div id="cancelRow" class="cancel-row" style="display:none;">
+        <button class="btn btn-danger" id="cancelBtn" data-i18n="cancel"></button>
       </div>
     </div>
 
-    <!-- Stats Section -->
-    <div class="section">
-      <div class="section-title" data-i18n="status"></div>
-      <div id="occupiedBanner" class="occupied-banner" style="display:none;"></div>
-      <div id="pairingBanner" class="pairing-banner" style="display:none;"></div>
-      <div class="stats-grid">
-        <div class="stat-item">
-          <div class="stat-label">Gateway</div>
-          <div class="stat-value" id="statGateway">—</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label" data-i18n="browserIdLabel"></div>
-          <div class="stat-value" id="statBrowserName">—</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label" data-i18n="tabsLabel"></div>
-          <div class="stat-value" id="statTabs">0</div>
-        </div>
-      </div>
-      <div class="last-cmd">
-        <span class="stat-label" data-i18n="lastCmd"></span>
-        <span class="stat-value cmd-value" id="statLastCmd">—</span>
-      </div>
+    <!-- Stats (compact) -->
+    <div class="stats-bar" id="statsBar" style="display:none;">
+      <span class="stat-chip"><span class="stat-chip-label">Gateway</span><span id="statGateway">—</span></span>
+      <span class="stat-chip"><span class="stat-chip-label" data-i18n="browserIdLabel"></span><span id="statBrowserName">—</span></span>
+      <span class="stat-chip"><span class="stat-chip-label" data-i18n="tabsLabel"></span><span id="statTabs">0</span></span>
     </div>
+
   </div>
 
   <script src="popup.js"></script>
