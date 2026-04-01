@@ -253,14 +253,11 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function collapseConfig(collapse) {
   configCollapsed = collapse;
   $('configBody').style.display = collapse ? 'none' : '';
-  $('collapseConfig').textContent = collapse ? '▸' : '▾';
 }
 
 // ── Config collapse toggle ────────────────────────────────────────────────
-$('collapseConfig').addEventListener('click', () => collapseConfig(!configCollapsed));
 
 // ── Screenshot lightbox ───────────────────────────────────────────────────
 $('screenshotWrap').addEventListener('click', () => {
