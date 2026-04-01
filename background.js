@@ -78,8 +78,7 @@ function connect(url, token, name) {
   wsUrl = url;
   wsToken = token;
   wsBrowserName = name || '';
-  // clientId 优先用用户自定义名称，否则用随机 id
-  wsClientId = name ? ('browser:' + name) : wsClientId;
+  // clientId 必须固定为 'webchat'（Gateway schema 限制），浏览器名称通过 userAgent 传递
 
   if (!url || !token) return;
 
@@ -106,13 +105,13 @@ function connect(url, token, name) {
       params: {
         minProtocol: 3,
         maxProtocol: 3,
-        client: { id: wsClientId, version: '1.71.3', platform: 'web', mode: 'webchat' },
+        client: { id: 'webchat', version: '1.71.3', platform: 'web', mode: 'webchat' },
         role: 'operator',
         scopes: ['operator.read', 'operator.write', 'operator.admin', 'operator.approvals'],
         caps: [], commands: [], permissions: {},
         auth: { token: wsToken },
         locale: 'zh-CN',
-        userAgent: 'vivian-browser-extension/' + VERSION
+        userAgent: 'vivian-browser-extension/' + VERSION + (wsBrowserName ? ' (' + wsBrowserName + ')' : '')
       }
     }));
   };
