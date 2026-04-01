@@ -8,6 +8,8 @@ const VERSION = '1.0.0';
 let ws = null;
 let wsUrl = null;
 let wsToken = null;
+let wsClientId = 'vivian-ext-' + Math.random().toString(36).slice(2, 8);
+let pendingConnectId = null;
 let reconnectTimer = null;
 let reconnectDelay = 1000; // 初始重连延迟 1s
 const MAX_RECONNECT_DELAY = 30000; // 最大重连延迟 30s
@@ -89,23 +91,26 @@ function connect(url, token) {
   }
 
   ws.onopen = () => {
-    console.log('[Vivian] WebSocket connected');
-    reconnectDelay = 1000;
-    clearTimeout(reconnectTimer);
-    isConnected = true;
-    setStatus('connected');
-    drawIcon(true);
-
-    // 发送认证
-    send({
-      type: 'browser_agent_connect',
-      token: wsToken,
-      agentType: 'browser-extension',
-      version: VERSION
-    });
-
-    // 上报当前标签页列表
-    reportTabs();
+    console.log('[Vivian] WebSocket connected, sending handshake...');
+    // OpenClaw Gateway 标准握手协议
+    const connectId = 'connect-' + Date.now();
+    pendingConnectId = connectId;
+    ws.send(JSON.stringify({
+      type: 'req',
+      id: connectId,
+      method: 'connect',
+      params: {
+        minProtocol: 3,
+        maxProtocol: 3,
+        client: { id: wsClientId, version: '1.71.3', platform: 'web', mode: 'webchat' },
+        role: 'operator',
+        scopes: ['operator.read', 'operator.write', 'operator.admin', 'operator.approvals'],
+        caps: [], commands: [], permissions: {},
+        auth: { token: wsToken },
+        locale: 'zh-CN',
+        userAgent: 'vivian-browser-extension/' + VERSION
+      }
+    }));
   };
 
   ws.onmessage = async (event) => {
@@ -116,8 +121,44 @@ function connect(url, token) {
       console.warn('[Vivian] Invalid JSON:', event.data);
       return;
     }
-    console.log('[Vivian] Received:', msg.type);
-    await handleCommand(msg);
+
+    // 处理握手响应
+    if (msg.type === 'res' && msg.id === pendingConnectId) {
+      pendingConnectId = null;
+      if (msg.ok) {
+        console.log('[Vivian] Handshake OK, connected!');
+        reconnectDelay = 1000;
+        clearTimeout(reconnectTimer);
+        isConnected = true;
+        setStatus('connected');
+        drawIcon(true);
+        reportTabs();
+      } else {
+        const code = msg.payload?.code || msg.error?.code || '';
+        console.error('[Vivian] Handshake failed:', code, msg);
+        if (code === 'NOT_PAIRED') {
+          setStatus('pairing');
+        } else {
+          setStatus('disconnected');
+          scheduleReconnect();
+        }
+      }
+      return;
+    }
+
+    // 处理 connect.challenge 事件（无需 device identity，直接忽略）
+    if (msg.type === 'event' && msg.event === 'connect.challenge') {
+      // 不需要 device identity，Gateway 会在 connect req 后直接响应
+      return;
+    }
+
+    // 处理来自 Gateway 的指令（event 类型）
+    if (msg.type === 'event') {
+      await handleCommand(msg.payload || msg);
+      return;
+    }
+
+    console.log('[Vivian] Unhandled msg type:', msg.type, msg);
   };
 
   ws.onerror = (err) => {
