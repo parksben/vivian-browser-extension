@@ -330,14 +330,7 @@ input::placeholder {
   border-color: #ef4444 !important;
 }
 
-/* ─── Footer ─── */
-.footer {
-  padding: 10px 16px;
-  text-align: center;
-  font-size: 11px;
-  color: #334155;
-}
-
-.highlight {
-  color: #22d3ee;
+/* ─── Brand (no icon) ─── */
+.brand-name {
+  font-size: 14px;
 }

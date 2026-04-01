@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Vivian Browser Agent",
+  "name": "OpenClaw Browser",
   "version": "1.0.0",
-  "description": "将浏览器与 OpenClaw AI 助手 Vivian 连接，让 AI 能感知和操控你的浏览器。",
+  "description": "Connect your browser to an OpenClaw Gateway, enabling AI agents to observe and control browser tabs.",
   "permissions": [
     "tabs",
     "activeTab",
@@ -19,7 +19,7 @@
   },
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Vivian Browser Agent",
+    "default_title": "OpenClaw Browser",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
