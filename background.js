@@ -154,7 +154,20 @@ function connect(url, token) {
 
     // 处理来自 Gateway 的指令（event 类型）
     if (msg.type === 'event') {
-      await handleCommand(msg.payload || msg);
+      const payload = msg.payload || msg;
+
+      // Agent 白名单过滤：指令里若携带 agentId，检查是否在 selectedAgents 里
+      const agentId = payload.agentId || msg.agentId;
+      if (agentId) {
+        const { selectedAgents } = await chrome.storage.local.get(['selectedAgents']);
+        // selectedAgents 为 null/undefined 时视为全选（未设置过）
+        if (selectedAgents && !selectedAgents.includes(agentId)) {
+          console.log(`[Vivian] Blocked command from agent "${agentId}" (not in selectedAgents)`);
+          return;
+        }
+      }
+
+      await handleCommand(payload);
       return;
     }
 
