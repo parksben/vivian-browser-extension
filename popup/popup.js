@@ -337,16 +337,13 @@ const settingsMenu = $('settingsMenu');
 
 settingsBtn.addEventListener('click', (e) => {
   e.stopPropagation();
-  const isOpen = settingsMenu.style.display !== 'none' && settingsMenu.style.display !== '';
-  settingsMenu.style.display = isOpen ? 'none' : 'block';
-  console.log('[ClawTab] settings menu toggled:', !isOpen);
+  settingsMenu.classList.toggle('open');
 });
 
-// 点菜单内的项不关闭（由各项自己关）
 settingsMenu.addEventListener('click', (e) => e.stopPropagation());
 
 document.addEventListener('click', () => {
-  settingsMenu.style.display = 'none';
+  settingsMenu.classList.remove('open');
 });
 
 // Lang toggle
@@ -355,7 +352,7 @@ $('langToggle').addEventListener('click', async () => {
   await chrome.storage.local.set({lang});
   applyI18n();
   if (lastData) render(lastData);
-  settingsMenu.style.display = 'none';
+  settingsMenu.classList.remove('open');
 });
 
 // Export config
@@ -368,13 +365,13 @@ $('exportConfig').addEventListener('click', async () => {
   const a = document.createElement('a');
   a.href = url; a.download = 'clawtab-config.json'; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  settingsMenu.style.display = 'none';
+  settingsMenu.classList.remove('open');
 });
 
 // Import config
 $('importConfig').addEventListener('click', () => {
   $('importFile').click();
-  settingsMenu.style.display = 'none';
+  settingsMenu.classList.remove('open');
 });
 
 $('importFile').addEventListener('change', async (e) => {
