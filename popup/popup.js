@@ -1,280 +1,394 @@
 /**
- * popup.js - ClawTab v3
+ * ClawTab popup.js
+ * Architecture:
+ *   - I18N: single source of truth, all text goes through t()
+ *   - State: one render() call updates everything
+ *   - Lang: stored in chrome.storage, loaded once at init, applied via applyI18n()
  */
 
-// ── i18n ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// 1. I18N — single source of truth
+// ═══════════════════════════════════════════════════════
+
 const I18N = {
   en: {
-    config: 'Connection', browserName: 'Browser Name', browserNameHint: '(identifier)',
-    connect: 'Connect', disconnect: 'Disconnect',
-    browserIdLabel: 'Browser ID', tabsLabel: 'Tabs',
-    cancel: 'Cancel Task',
-    idle: 'Ready',
-    connecting: 'Connecting…',
-    disconnected: 'Disconnected',
-    perceiving: 'Analyzing page…',
-    thinking: 'Thinking…',
-    acting: 'Executing…',
-    done: 'Task complete',
-    failed: 'Task failed',
-    cancelled: 'Cancelled',
-    // pairing
-    pairingTitle: '🔗 Pairing required',
-    pairingDesc: 'Send this pairing code to your OpenClaw agent to complete the setup:',
-    pairingCmd: 'Or run on your Gateway:',
-    switchLang: '切换中文',
-    pairingOr: '或在服务器上运行：',
-    pairingCopy: '已复制！',
-    cancel: '取消',
-    connFailed: '连接失败，请检查配置',
-    notConfigured: '未配置',
-    exportConfig: 'Export config…',
-    importConfig: 'Import config…',
-    exportSuccess: 'Config exported!',
+    // Connection
+    config:          'Connection',
+    browserName:     'Browser Name',
+    browserNameHint: '(identifier)',
+    connect:         'Connect',
+    disconnect:      'Disconnect',
+    connecting:      'Connecting…',
+    // Settings menu
+    switchLang:   '切换中文',
+    exportConfig: 'Export config',
+    importConfig: 'Import config',
     importSuccess: 'Config imported!',
-    importError: 'Invalid config file',
-    // loop status texts
-    loopIdle: 'Ready — waiting for instructions',
-    loopPerceiving: 'Capturing page snapshot…',
-    loopThinking: 'Analyzing result',
-    loopActing: 'Executing action',
-    loopDone: 'All done ✅',
-    loopFailed: 'Something went wrong',
-    loopCancelled: 'Task cancelled',
+    importError:   'Invalid config file',
+    // Status texts (all statusText keys go here)
+    notConfigured: 'Not configured',
+    disconnected:  'Disconnected',
+    pairing:       'Awaiting pairing…',
+    connFailed:    'Connection failed — check config',
+    loopIdle:       'Ready',
+    loopPerceiving: 'Analyzing page…',
+    loopThinking:   'Thinking…',
+    loopActing:     'Executing…',
+    loopDone:       'Task complete',
+    loopFailed:     'Task failed',
+    loopCancelled:  'Cancelled',
+    // Pairing panel
+    pairingTitle: '🔗 Pairing required',
+    pairingDesc:  'Send this pairing code to your OpenClaw agent:',
+    pairingOr:    'Or run on your Gateway:',
+    // Stats
+    browserIdLabel: 'Browser ID',
+    tabsLabel:      'Tabs',
+    // Task
+    cancel:       'Cancel Task',
+    taskRunning:  'Running',
+    taskDone:     'Done',
+    taskFailed:   'Failed',
+    taskCancelled:'Cancelled',
   },
   zh: {
-    config: '连接配置', browserName: '浏览器名称', browserNameHint: '（标识）',
-    connect: '保存并连接', disconnect: '断开',
-    browserIdLabel: '标识', tabsLabel: '标签页',
-    cancel: '取消任务',
-    idle: '就绪',
-    connecting: '连接中…',
-    disconnected: '未连接',
-    perceiving: '分析页面中…',
-    thinking: '思考中…',
-    acting: '执行操作中…',
-    done: '任务完成',
-    failed: '任务失败',
-    cancelled: '已取消',
-    // pairing
-    pairingTitle: '🔗 需要配对',
-    pairingDesc: '将以下配对码发送给 OpenClaw Agent 完成绑定：',
-    pairingCmd: '或在 Gateway 上运行：',
-    switchLang: 'Switch to English',
-    pairingOr: 'Or run on your server:',
-    pairingCopy: 'Copied!',
-    cancel: 'Cancel',
-    connFailed: 'Connection failed — check config',
-    notConfigured: 'Not configured',
-    exportConfig: '导出配置…',
-    importConfig: '导入配置…',
-    exportSuccess: '配置已导出！',
+    config:          '连接配置',
+    browserName:     '浏览器名称',
+    browserNameHint: '（标识）',
+    connect:         '保存并连接',
+    disconnect:      '断开',
+    connecting:      '连接中…',
+    switchLang:   'Switch to English',
+    exportConfig: '导出配置',
+    importConfig: '导入配置',
     importSuccess: '配置已导入！',
-    importError: '无效的配置文件',
-    // loop status texts
-    loopIdle: '就绪，等待指令',
-    loopPerceiving: '正在截图并分析页面…',
-    loopThinking: '正在分析结果',
-    loopActing: '正在执行操作',
-    loopDone: '全部完成 ✅',
-    loopFailed: '任务遇到错误',
-    loopCancelled: '任务已取消',
+    importError:   '无效的配置文件',
+    notConfigured: '未配置',
+    disconnected:  '未连接',
+    pairing:       '等待配对批准…',
+    connFailed:    '连接失败，请检查配置',
+    loopIdle:       '就绪',
+    loopPerceiving: '正在分析页面…',
+    loopThinking:   '思考中…',
+    loopActing:     '正在执行操作…',
+    loopDone:       '任务完成',
+    loopFailed:     '任务失败',
+    loopCancelled:  '已取消',
+    pairingTitle: '🔗 需要配对',
+    pairingDesc:  '将配对码发送给 OpenClaw Agent：',
+    pairingOr:    '或在 Gateway 上运行：',
+    browserIdLabel: '标识',
+    tabsLabel:      '标签页',
+    cancel:       '取消任务',
+    taskRunning:  '执行中',
+    taskDone:     '已完成',
+    taskFailed:   '失败',
+    taskCancelled:'已取消',
   },
 };
-let lang = 'en';
-const t = k => I18N[lang]?.[k] || I18N.en[k] || k;
 
+// ═══════════════════════════════════════════════════════
+// 2. Language — single variable, load once
+// ═══════════════════════════════════════════════════════
+
+let lang = 'en'; // default, overridden by storage in init
+
+const t = key => I18N[lang]?.[key] ?? I18N.en[key] ?? key;
+
+/**
+ * Apply current lang to ALL translatable elements.
+ * Rules:
+ *   - [data-i18n="key"]  → textContent = t(key)
+ *   - #langToggle        → shows the OTHER language name
+ */
 function applyI18n() {
-  // 所有 data-i18n 元素统一翻译（包括 statusText）
   document.querySelectorAll('[data-i18n]').forEach(el => {
-    el.textContent = t(el.dataset.i18n);
+    const key = el.dataset.i18n;
+    if (key) el.textContent = t(key);
   });
-  const _lb = document.getElementById('langToggle');
-  if (_lb) _lb.textContent = lang === 'en' ? '切换中文' : 'Switch to English';
+  const lb = document.getElementById('langToggle');
+  if (lb) lb.textContent = lang === 'en' ? '切换中文' : 'Switch to English';
 }
 
-// 设置 statusText：更新 data-i18n key 并立即翻译
-function setStatusText(key) {
-  const st = document.getElementById('statusText');
-  if (!st) return;
-  st.dataset.i18n = key;
-  st.textContent = t(key);
+/**
+ * Set status text by i18n key.
+ * Stores the key in data-i18n so applyI18n() can re-translate on lang switch.
+ */
+function setStatus(key, customText) {
+  const el = document.getElementById('statusText');
+  if (!el) return;
+  if (customText) {
+    // Dynamic text (e.g. "Clicking #btn") — not in i18n dict, display as-is
+    el.removeAttribute('data-i18n');
+    el.textContent = customText;
+  } else {
+    el.dataset.i18n = key;
+    el.textContent = t(key);
+  }
 }
 
-// ── DOM refs ──────────────────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
+// ═══════════════════════════════════════════════════════
+// 3. Render — single function, pure state → DOM
+// ═══════════════════════════════════════════════════════
 
-// ── State ─────────────────────────────────────────────────────────────────
 let lastData = null;
 
-// ── Status dot mapping ────────────────────────────────────────────────────
-const DOT_CLASS = {
-  connected:'connected', perceiving:'perceiving', thinking:'thinking',
-  acting:'acting', done:'done', failed:'failed', cancelled:'failed',
-  pairing:'pairing', disconnected:'',
-};
-
-// ── Main render ───────────────────────────────────────────────────────────
 function render(data) {
   lastData = data;
-  const { wsConnected, pairingPending, reconnecting, gaveUp, loop, browserId, wsUrl, tabCount } = data;
-
-  // Status badge
+  const { wsConnected, pairingPending, reconnecting, gaveUp, deviceId,
+          loop, browserId, wsUrl, tabCount } = data;
   const loopStatus = loop?.status || 'idle';
-  const dotClass = (wsConnected || reconnecting) ? (DOT_CLASS[loopStatus] || 'connected') : (pairingPending ? 'pairing' : 'disconnected');
-  $('statusDot').className = `status-dot ${dotClass}`;
-  const statusKey = wsConnected ? loopStatus : (pairingPending ? 'pairing' : 'disconnected');
+
+  // ── Status badge ──
+  const dotStates = {
+    connected:'connected', perceiving:'perceiving', thinking:'thinking',
+    acting:'acting', done:'done', failed:'failed', cancelled:'failed',
+  };
+  const dot = document.getElementById('statusDot');
+  if (dot) {
+    dot.className = 'status-dot ' + (
+      wsConnected ? (dotStates[loopStatus] || 'connected') :
+      pairingPending ? 'pairing' : ''
+    );
+  }
+
+  // ── Status text (ALL via setStatus → data-i18n) ──
   if (wsConnected) {
-    const keyMap = {idle:'loopIdle',perceiving:'loopPerceiving',thinking:'loopThinking',
-      acting:'loopActing',done:'loopDone',failed:'loopFailed',cancelled:'loopCancelled'};
-    const key = keyMap[loopStatus] || 'loopIdle';
-    const custom = loop?.statusText;
-    if (custom) {
-      // 动态文字（如 "Clicking #btn"），不走 i18n
-      const st = document.getElementById('statusText');
-      if (st) { st.dataset.i18n = ''; st.textContent = custom; }
-    } else {
-      setStatusText(key);  // 走 data-i18n，语言切换时自动更新
-    }
-  } else {
-    const key = pairingPending ? 'pairingTitle' : reconnecting ? 'connecting' : gaveUp ? 'connFailed' : 'notConfigured';
-    setStatusText(key);
-  }
-
-  // Config section: 未连接 且 不在重连中 才显示
-  $('configSection').style.display = (wsConnected || reconnecting || pairingPending) ? 'none' : '';
-  // 3次重连失败后，显示错误提示
-  const retryTip = $('retryTip');
-  if (retryTip) retryTip.style.display = gaveUp ? '' : 'none';
-
-  // Pairing section（大面板）
-  const pairSec = $('pairingSection');
-  if (pairingPending) {
-    pairSec.style.display = '';
-    const deviceId = data.deviceId || '';
-    $('pairingCodeText').textContent = deviceId ? deviceId.slice(0,24)+'…' : '—';
-    $('pairingCmd').textContent = deviceId ? `openclaw devices approve ${deviceId.slice(0,16)}` : 'openclaw devices approve';
-    $('pairingCopyBtn').onclick = async () => {
-      const cmd = `openclaw devices approve ${deviceId}`;
-      await navigator.clipboard.writeText(cmd).catch(()=>{});
-      $('pairingCopyBtn').textContent = '✓';
-      setTimeout(()=>{ $('pairingCopyBtn').textContent = '⎘'; }, 2000);
+    const keyMap = {
+      idle:'loopIdle', perceiving:'loopPerceiving', thinking:'loopThinking',
+      acting:'loopActing', done:'loopDone', failed:'loopFailed', cancelled:'loopCancelled',
     };
-  } else {
-    pairSec.style.display = 'none';
+    const custom = loop?.statusText; // e.g. "Clicking #btn-login"
+    setStatus(keyMap[loopStatus] || 'loopIdle', custom || null);
+  } else if (pairingPending) { setStatus('pairing');
+  } else if (reconnecting)   { setStatus('connecting');
+  } else if (gaveUp)         { setStatus('connFailed');
+  } else if (wsUrl)          { setStatus('disconnected');
+  } else                     { setStatus('notConfigured');
   }
 
-  // 连接成功后显示断联按钮，隐藏品牌标题（节省空间）
-  $('brandArea').style.display = wsConnected ? 'none' : '';
-  $('disconnectInlineBtn').style.display = wsConnected ? '' : 'none';
+  // ── Sections visibility ──
+  const show = id => { const e = document.getElementById(id); if (e) e.style.display = ''; };
+  const hide = id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; };
 
-  // Loop section: 只在任务执行中显示（非 idle）
-  const loopEl = $('loopSection');
-  const hasTask = (wsConnected || reconnecting) && loop?.status && loop.status !== 'idle';
-  if (hasTask) {
-    loopEl.style.display = '';
-    renderLoop(loop);
+  if (wsConnected) {
+    hide('configSection'); hide('pairingSection');
+    show('statsBar');
+    // Loop section only when task is running
+    const hasTask = loopStatus !== 'idle';
+    if (hasTask) { show('loopSection'); renderLoop(loop); }
+    else          hide('loopSection');
+    // Header
+    hide('brandArea'); show('disconnectInlineBtn');
+  } else if (pairingPending) {
+    hide('configSection'); show('pairingSection');
+    hide('statsBar'); hide('loopSection');
+    show('brandArea'); hide('disconnectInlineBtn');
+    renderPairing(deviceId);
   } else {
-    loopEl.style.display = 'none';
+    show('configSection'); hide('pairingSection');
+    hide('statsBar'); hide('loopSection');
+    show('brandArea'); hide('disconnectInlineBtn');
+    const tip = document.getElementById('retryTip');
+    if (tip) tip.style.display = gaveUp ? '' : 'none';
   }
 
-  // Stats bar
-  const statsBar = $('statsBar');
-  if (wsConnected || reconnecting) {
-    statsBar.style.display = '';
-    let gw = '—';
-    try { gw = new URL(wsUrl).host; } catch(_) { gw = wsUrl || '—'; }
-    $('statGateway').textContent = gw;
-    $('statBrowserName').textContent = browserId || '—';
-    $('statTabs').textContent = tabCount ?? 0;
-  } else {
-    statsBar.style.display = 'none';
+  // ── Stats ──
+  if (wsConnected) {
+    const gw = document.getElementById('statGateway');
+    const bn = document.getElementById('statBrowserName');
+    const tb = document.getElementById('statTabs');
+    if (gw) { try { gw.textContent = new URL(wsUrl).host; } catch { gw.textContent = wsUrl || '—'; } }
+    if (bn) bn.textContent = browserId || '—';
+    if (tb) tb.textContent = tabCount ?? 0;
   }
+
+  // ── Occupied banner ──
+  const ob = document.getElementById('occupiedBanner');
+  if (ob) {
+    if (wsConnected && loop?.status === 'running' && loop?.agentId) {
+      ob.style.display = '';
+      ob.textContent = `🔒 ${loop.agentId} · ${loop.taskName || ''}`;
+    } else ob.style.display = 'none';
+  }
+}
+
+function renderPairing(deviceId) {
+  const ct = document.getElementById('pairingCodeText');
+  const cmd = document.getElementById('pairingCmd');
+  if (ct) ct.textContent = deviceId ? deviceId.slice(0, 24) + '…' : '—';
+  if (cmd) cmd.textContent = deviceId
+    ? `openclaw devices approve ${deviceId.slice(0, 16)}`
+    : 'openclaw devices approve';
+  const cb = document.getElementById('pairingCopyBtn');
+  if (cb) cb.onclick = async () => {
+    await navigator.clipboard.writeText(`openclaw devices approve ${deviceId}`).catch(() => {});
+    cb.textContent = '✓'; setTimeout(() => cb.textContent = '⎘', 2000);
+  };
 }
 
 function renderLoop(loop) {
   if (!loop) return;
-  const { status, goal, agentId, stepIndex, history, lastScreenshot, lastUrl, lastTitle, statusText, errorMsg, startedAt } = loop;
+  const { status, goal, agentId, stepIndex, history, lastScreenshot,
+          lastUrl, lastTitle, errorMsg } = loop;
 
-  // Goal
-  const goalEl = $('loopGoal');
-  if (goal) {
-    goalEl.style.display = '';
-    goalEl.textContent = `🎯 ${goal}`;
-  } else {
-    goalEl.style.display = 'none';
+  const goal_el = document.getElementById('loopGoal');
+  if (goal_el) { goal_el.style.display = goal ? '' : 'none'; if (goal) goal_el.textContent = `🎯 ${goal}`; }
+
+  const ind = document.getElementById('loopIndicator');
+  if (ind) ind.className = `loop-indicator ${status}`;
+
+  const stEl = document.getElementById('loopStatusText');
+  if (stEl) {
+    stEl.className = `loop-status-text ${status}`;
+    if (status === 'thinking') stEl.classList.add('thinking-dots');
+    else stEl.classList.remove('thinking-dots');
   }
 
-  // Indicator + status text
-  const ind = $('loopIndicator');
-  ind.className = `loop-indicator ${status}`;
+  const stepEl = document.getElementById('loopStep');
+  if (stepEl) stepEl.textContent = stepIndex > 0 ? `Step ${stepIndex}` : '';
 
-  const stEl = $('loopStatusText');
-  stEl.className = `loop-status-text ${status}`;
-
-  // 状态文字：优先用 background 下发的 statusText，否则用 i18n
-  const loopI18nKey = {
-    idle: 'loopIdle', perceiving: 'loopPerceiving', thinking: 'loopThinking',
-    acting: 'loopActing', done: 'loopDone', failed: 'loopFailed', cancelled: 'loopCancelled',
-  }[status] || 'loopIdle';
-  const displayText = (statusText && statusText !== t(status)) ? statusText : t(loopI18nKey);
-
-  if (status === 'thinking') {
-    stEl.classList.add('thinking-dots');
-    stEl.textContent = t('loopThinking').replace('…','').replace('中','');
-  } else {
-    stEl.classList.remove('thinking-dots');
-    stEl.textContent = displayText;
+  const swrap = document.getElementById('screenshotWrap');
+  if (swrap) {
+    if (lastScreenshot && status !== 'idle') {
+      swrap.style.display = '';
+      const img = document.getElementById('screenshotImg');
+      const lbl = document.getElementById('screenshotLabel');
+      if (img) img.src = lastScreenshot;
+      if (lbl) lbl.textContent = lastTitle || lastUrl || '';
+      swrap.className = `screenshot-wrap${status === 'perceiving' ? ' scanning' : ''}`;
+    } else swrap.style.display = 'none';
   }
 
-  // Step counter
-  $('loopStep').textContent = stepIndex > 0 ? `Step ${stepIndex}` : '';
-
-  // Screenshot
-  const swrap = $('screenshotWrap');
-  if (lastScreenshot && status !== 'idle') {
-    swrap.style.display = '';
-    $('screenshotImg').src = lastScreenshot;
-    $('screenshotLabel').textContent = lastTitle || lastUrl || '';
-    swrap.className = `screenshot-wrap${status === 'perceiving' ? ' scanning' : ''}`;
-  } else {
-    swrap.style.display = 'none';
+  const histEl = document.getElementById('historyList');
+  if (histEl) {
+    const recent = (history || []).slice(-6);
+    if (recent.length > 0) {
+      histEl.style.display = '';
+      histEl.innerHTML = '';
+      recent.forEach(h => {
+        const isLast = h === recent[recent.length - 1];
+        const running = isLast && ['acting','perceiving'].includes(status);
+        const icon = running ? '⏳' : h.status === 'done' ? '✅' : h.status === 'failed' ? '❌' : '○';
+        const ms = h.durationMs ? `${(h.durationMs/1000).toFixed(1)}s` : '';
+        const item = document.createElement('div');
+        item.className = `history-item ${running ? 'running' : h.status}`;
+        item.innerHTML = `<span class="h-icon">${icon}</span><span class="h-desc">${esc(h.desc||h.op)}</span><span class="h-time">${ms}</span>`;
+        histEl.appendChild(item);
+      });
+    } else histEl.style.display = 'none';
   }
 
-  // History
-  const histEl = $('historyList');
-  const recent = (history || []).slice(-6);
-  if (recent.length > 0) {
-    histEl.style.display = '';
-    histEl.innerHTML = '';
-    recent.forEach(h => {
-      const item = document.createElement('div');
-      const isLast = h === recent[recent.length - 1];
-      const running = isLast && ['acting', 'perceiving'].includes(status);
-      item.className = `history-item ${running ? 'running' : h.status}`;
-      const icon = running ? '⏳' : h.status === 'done' ? '✅' : h.status === 'failed' ? '❌' : '○';
-      const ms = h.durationMs ? `${(h.durationMs/1000).toFixed(1)}s` : '';
-      item.innerHTML = `<span class="h-icon">${icon}</span><span class="h-desc ${h.status==='failed'?'failed':''}">${escHtml(h.desc||h.op)}</span><span class="h-time">${ms}</span>`;
-      histEl.appendChild(item);
-    });
-  } else {
-    histEl.style.display = 'none';
-  }
-
-  // Cancel button
-  const cancelRow = $('cancelRow');
-  cancelRow.style.display = ['acting','perceiving','thinking'].includes(status) ? '' : 'none';
+  const cr = document.getElementById('cancelRow');
+  if (cr) cr.style.display = ['acting','perceiving','thinking'].includes(status) ? '' : 'none';
 }
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
+// ═══════════════════════════════════════════════════════
+// 4. Events
+// ═══════════════════════════════════════════════════════
 
-// ── Config collapse toggle ────────────────────────────────────────────────
+// Settings menu — event delegation, no stored refs
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('settingsMenu');
+  if (!menu) return;
+  if (e.target.closest('#settingsBtn')) {
+    e.stopPropagation();
+    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    return;
+  }
+  if (!e.target.closest('#settingsMenu')) menu.style.display = 'none';
+});
 
-// ── Screenshot lightbox ───────────────────────────────────────────────────
-$('screenshotWrap').addEventListener('click', () => {
+// Connect
+document.getElementById('connectBtn').addEventListener('click', async () => {
+  const url   = document.getElementById('gatewayUrl').value.trim();
+  const token = document.getElementById('gatewayToken').value.trim();
+  const name  = document.getElementById('browserName').value.trim() || ('browser-' + Math.random().toString(36).slice(2, 6));
+  if (!url)   { document.getElementById('gatewayUrl').classList.add('input-error');   setTimeout(() => document.getElementById('gatewayUrl').classList.remove('input-error'), 1500);   return; }
+  if (!token) { document.getElementById('gatewayToken').classList.add('input-error'); setTimeout(() => document.getElementById('gatewayToken').classList.remove('input-error'), 1500); return; }
+  await chrome.storage.local.set({ gatewayUrl:url, gatewayToken:token, browserName:name,
+    gatewayUrlDraft:url, gatewayTokenDraft:token, browserNameDraft:name });
+  const btn = document.getElementById('connectBtn');
+  btn.disabled = true; btn.textContent = t('connecting');
+  try { await chrome.runtime.sendMessage({ type:'connect', url, token, name }); } catch(_) {}
+  setTimeout(async () => { btn.disabled = false; btn.textContent = t('connect'); await fetchStatus(); }, 1500);
+});
+
+// Disconnect inline
+document.getElementById('disconnectInlineBtn').addEventListener('click', async () => {
+  try { await chrome.runtime.sendMessage({ type:'disconnect' }); } catch(_) {}
+  render({ wsConnected:false, pairingPending:false, reconnecting:false, gaveUp:false,
+           wsUrl:'', browserId:'', tabCount:0, loop:{ status:'idle' } });
+});
+
+// Toggle token visibility
+document.getElementById('toggleToken').addEventListener('click', () => {
+  const inp = document.getElementById('gatewayToken');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+});
+
+// Cancel task
+document.getElementById('cancelBtn').addEventListener('click', async () => {
+  try { await chrome.runtime.sendMessage({ type:'cancel' }); } catch(_) {}
+});
+
+// Pairing cancel
+document.getElementById('pairingCancelBtn').addEventListener('click', async () => {
+  try { await chrome.runtime.sendMessage({ type:'disconnect' }); } catch(_) {}
+  render({ wsConnected:false, pairingPending:false, reconnecting:false, gaveUp:false,
+           wsUrl:'', browserId:'', tabCount:0, loop:{ status:'idle' } });
+});
+
+// Lang toggle
+document.getElementById('langToggle').addEventListener('click', async () => {
+  lang = lang === 'en' ? 'zh' : 'en';
+  await chrome.storage.local.set({ lang });
+  applyI18n();
+  if (lastData) render(lastData); // re-render with new lang
+  document.getElementById('settingsMenu').style.display = 'none';
+});
+
+// Export config
+document.getElementById('exportConfig').addEventListener('click', async () => {
+  const d = await chrome.storage.local.get(['gatewayUrl','gatewayToken','browserName']);
+  const json = JSON.stringify({ _clawtab:true, gatewayUrl:d.gatewayUrl||'', gatewayToken:d.gatewayToken||'', browserName:d.browserName||'' }, null, 2);
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([json], { type:'application/json' })),
+    download: 'clawtab-config.json',
+  });
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  document.getElementById('settingsMenu').style.display = 'none';
+});
+
+// Import config
+document.getElementById('importConfig').addEventListener('click', () => {
+  document.getElementById('importFile').click();
+  document.getElementById('settingsMenu').style.display = 'none';
+});
+
+document.getElementById('importFile').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0]; if (!file) return;
+  try {
+    const cfg = JSON.parse(await file.text());
+    if (!cfg.gatewayUrl) throw new Error('invalid');
+    const { gatewayUrl:url='', gatewayToken:token='', browserName:name='' } = cfg;
+    await chrome.storage.local.set({ gatewayUrl:url, gatewayToken:token, browserName:name,
+      gatewayUrlDraft:url, gatewayTokenDraft:token, browserNameDraft:name });
+    document.getElementById('gatewayUrl').value = url;
+    document.getElementById('gatewayToken').value = token;
+    document.getElementById('browserName').value = name;
+    try { await chrome.runtime.sendMessage({ type:'disconnect' }); } catch(_) {}
+    render({ wsConnected:false, pairingPending:false, reconnecting:false, gaveUp:false,
+             wsUrl:'', browserId:'', tabCount:0, loop:{ status:'idle' } });
+    showToast(t('importSuccess'));
+  } catch { showToast(t('importError'), true); }
+  e.target.value = '';
+});
+
+// Screenshot lightbox
+document.getElementById('screenshotWrap').addEventListener('click', () => {
   if (!lastData?.loop?.lastScreenshot) return;
   const lb = document.createElement('div');
   lb.className = 'lightbox';
@@ -283,189 +397,74 @@ $('screenshotWrap').addEventListener('click', () => {
   document.body.appendChild(lb);
 });
 
-// ── Draft auto-save ───────────────────────────────────────────────────────
+// Draft auto-save
 let draftTimer;
-function scheduleDraft() {
-  clearTimeout(draftTimer);
-  draftTimer = setTimeout(async () => {
-    await chrome.storage.local.set({
-      gatewayUrlDraft: $('gatewayUrl').value.trim(),
-      gatewayTokenDraft: $('gatewayToken').value.trim(),
-      browserNameDraft: $('browserName').value.trim(),
-    });
-  }, 600);
-}
-['gatewayUrl','gatewayToken','browserName'].forEach(id => $(`${id}`).addEventListener('input', scheduleDraft));
-
-// ── Load config ───────────────────────────────────────────────────────────
-async function loadConfig() {
-  const d = await chrome.storage.local.get([
-    'gatewayUrl','gatewayToken','browserName',
-    'gatewayUrlDraft','gatewayTokenDraft','browserNameDraft','lang',
-  ]);
-  $('gatewayUrl').value   = d.gatewayUrlDraft   || d.gatewayUrl   || '';
-  $('gatewayToken').value = d.gatewayTokenDraft || d.gatewayToken || '';
-  $('browserName').value  = d.browserNameDraft  || d.browserName  || '';
-  if (d.lang) lang = d.lang;
-  applyI18n();
-}
-
-// ── Connect ───────────────────────────────────────────────────────────────
-$('connectBtn').addEventListener('click', async () => {
-  const url   = $('gatewayUrl').value.trim();
-  const token = $('gatewayToken').value.trim();
-  const name  = $('browserName').value.trim() || ('browser-'+Math.random().toString(36).slice(2,6));
-  if (!url)   { $('gatewayUrl').classList.add('input-error'); setTimeout(()=>$('gatewayUrl').classList.remove('input-error'),1500); return; }
-  if (!token) { $('gatewayToken').classList.add('input-error'); setTimeout(()=>$('gatewayToken').classList.remove('input-error'),1500); return; }
-  await chrome.storage.local.set({gatewayUrl:url,gatewayToken:token,browserName:name,
-    gatewayUrlDraft:url,gatewayTokenDraft:token,browserNameDraft:name});
-  $('connectBtn').disabled = true;
-  $('connectBtn').textContent = t('connecting') || 'Connecting…';
-  // 不立刻改 UI 状态，等 background 推送真实状态
-  try { await chrome.runtime.sendMessage({type:'connect',url,token,name}); } catch(_){}
-  setTimeout(async ()=>{ $('connectBtn').disabled=false; $('connectBtn').textContent=t('connect'); await fetchStatus(); },1500);
+['gatewayUrl','gatewayToken','browserName'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(async () => {
+      await chrome.storage.local.set({
+        gatewayUrlDraft:   document.getElementById('gatewayUrl').value.trim(),
+        gatewayTokenDraft: document.getElementById('gatewayToken').value.trim(),
+        browserNameDraft:  document.getElementById('browserName').value.trim(),
+      });
+    }, 600);
+  });
 });
 
-async function doDisconnect() {
-  try { await chrome.runtime.sendMessage({type:'disconnect'}); } catch(_){}
-  render({wsConnected:false,pairingPending:false,reconnecting:false,gaveUp:false,tabCount:0,loop:{status:'idle'}});
-}
-$('disconnectInlineBtn').addEventListener('click', doDisconnect);
-
-$('toggleToken').addEventListener('click', () => {
-  const inp = $('gatewayToken');
-  inp.type = inp.type==='password' ? 'text' : 'password';
+// Background push
+chrome.runtime.onMessage.addListener(msg => {
+  if (msg.type === 'status_update') render(msg);
 });
 
-$('cancelBtn').addEventListener('click', async () => {
-  try { await chrome.runtime.sendMessage({type:'cancel'}); } catch(_){}
-});
-
-// ── Settings menu (event delegation on document) ─────────────────────────
-function openSettingsMenu() {
-  const m = document.getElementById('settingsMenu');
-  if (!m) return;
-  m.style.cssText = 'display:block;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);min-width:160px;z-index:9999;border:1px solid #e2e8f0;overflow:hidden;';
-}
-function closeSettingsMenu() {
-  const m = document.getElementById('settingsMenu');
-  if (m) m.style.display = 'none';
-}
-
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest('#settingsBtn');
-  const menu = e.target.closest('#settingsMenu');
-  if (btn) {
-    e.stopPropagation();
-    const m = document.getElementById('settingsMenu');
-    if (m && m.style.display === 'block') closeSettingsMenu();
-    else openSettingsMenu();
-    return;
-  }
-  if (!menu) closeSettingsMenu();
-});
-
-// Lang toggle
-$('langToggle').addEventListener('click', async () => {
-  lang = lang==='en' ? 'zh' : 'en';
-  await chrome.storage.local.set({lang});
-  applyI18n();
-  if (lastData) render(lastData);
-  closeSettingsMenu();
-});
-
-// Export config
-$('exportConfig').addEventListener('click', async () => {
-  const d = await chrome.storage.local.get(['gatewayUrl','gatewayToken','browserName']);
-  const cfg = { gatewayUrl: d.gatewayUrl||'', gatewayToken: d.gatewayToken||'', browserName: d.browserName||'', _clawtab: true };
-  const json = JSON.stringify(cfg, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'clawtab-config.json'; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  closeSettingsMenu();
-});
-
-// Import config
-$('importConfig').addEventListener('click', () => {
-  $('importFile').click();
-  closeSettingsMenu();
-});
-
-$('importFile').addEventListener('change', async (e) => {
-  const file = e.target.files?.[0]; if (!file) return;
-  try {
-    const text = await file.text();
-    const cfg = JSON.parse(text);
-    if (!cfg._clawtab && !cfg.gatewayUrl) throw new Error('invalid');
-    const url = cfg.gatewayUrl||''; const token = cfg.gatewayToken||''; const name = cfg.browserName||'';
-    // 存储
-    await chrome.storage.local.set({ gatewayUrl:url, gatewayToken:token, browserName:name,
-      gatewayUrlDraft:url, gatewayTokenDraft:token, browserNameDraft:name });
-    // 填入表单
-    $('gatewayUrl').value = url;
-    $('gatewayToken').value = token;
-    $('browserName').value = name;
-    // 断开当前连接，展示配置区让用户确认后重新连接
-    try { await chrome.runtime.sendMessage({type:'disconnect'}); } catch(_){}
-    $('configSection').style.display = '';
-    $('loopSection').style.display = 'none';
-    $('statsBar').style.display = 'none';
-    showToast(t('importSuccess'));
-  } catch(_) {
-    showToast(t('importError'), true);
-  }
-  e.target.value = '';
-});
-
-// ── Toast ────────────────────────────────────────────────────────────────
+// Toast
 function showToast(msg, isError=false) {
   const el = document.createElement('div');
-  el.style.cssText = `position:fixed;bottom:12px;left:50%;transform:translateX(-50%);
-    background:${isError?'#fee2e2':'#f0fdf4'};color:${isError?'#b91c1c':'#15803d'};
-    padding:7px 14px;border-radius:8px;font-size:11px;font-weight:600;
-    box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:999;white-space:nowrap;`;
+  el.style.cssText = `position:fixed;bottom:12px;left:50%;transform:translateX(-50%);background:${isError?'#fee2e2':'#f0fdf4'};color:${isError?'#b91c1c':'#15803d'};padding:7px 14px;border-radius:8px;font-size:11px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:999;white-space:nowrap;`;
   el.textContent = msg;
   document.body.appendChild(el);
-  setTimeout(()=>el.remove(), 2500);
+  setTimeout(() => el.remove(), 2500);
 }
 
-
-// Pairing cancel
-$('pairingCancelBtn').addEventListener('click', async () => {
-  try { await chrome.runtime.sendMessage({type:'disconnect'}); } catch(_){}
-  render({wsConnected:false,pairingPending:false,reconnecting:false,gaveUp:false,tabCount:0,loop:{status:'idle'}});
-});
-// ── Fetch status ──────────────────────────────────────────────────────────
 async function fetchStatus() {
   try {
-    const resp = await chrome.runtime.sendMessage({type:'get_status'});
+    const resp = await chrome.runtime.sendMessage({ type:'get_status' });
     if (resp) render(resp);
-  } catch(_) { render({wsConnected:false,pairingPending:false,reconnecting:false,gaveUp:false,tabCount:0,browserId:'',wsUrl:'',loop:{status:'idle'}}); }
+  } catch { render({ wsConnected:false, pairingPending:false, reconnecting:false, gaveUp:false,
+                     wsUrl:'', browserId:'', tabCount:0, loop:{ status:'idle' } }); }
 }
 
-// ── Background push ───────────────────────────────────────────────────────
-chrome.runtime.onMessage.addListener(msg => {
-  if (msg.type==='status_update') render(msg);
-});
+// ═══════════════════════════════════════════════════════
+// 5. Init — clean, sequential, single pass
+// ═══════════════════════════════════════════════════════
 
-// ── Init ──────────────────────────────────────────────────────────────────
 (async () => {
-  await loadConfig();
-  // 先检查是否有保存配置，有则先显示 connecting（等 SW 重连）
-  const saved = await chrome.storage.local.get(['gatewayUrl','gatewayToken']);
-  if (saved.gatewayUrl && saved.gatewayToken) {
-    $('configSection').style.display = 'none';
-    $('statsBar').style.display = 'none';
-    $('loopSection').style.display = 'none';
-    $('statusDot').className = 'status-dot pairing';
-    setStatusText('connecting');  // data-i18n='connecting', applyI18n 会用正确语言翻译
+  // Step 1: load lang from storage FIRST, apply i18n
+  const stored = await chrome.storage.local.get(['lang', 'gatewayUrl','gatewayToken','browserName',
+    'gatewayUrlDraft','gatewayTokenDraft','browserNameDraft']);
+  if (stored.lang) lang = stored.lang;
+  applyI18n(); // NOW all data-i18n elements get correct language
+
+  // Step 2: fill form fields
+  document.getElementById('gatewayUrl').value   = stored.gatewayUrlDraft   || stored.gatewayUrl   || '';
+  document.getElementById('gatewayToken').value = stored.gatewayTokenDraft || stored.gatewayToken || '';
+  document.getElementById('browserName').value  = stored.browserNameDraft  || stored.browserName  || '';
+
+  // Step 3: set initial UI state (uses lang already set above)
+  if (stored.gatewayUrl && stored.gatewayToken) {
+    // Has config → show connecting while SW reconnects
+    document.getElementById('configSection').style.display = 'none';
+    document.getElementById('statsBar').style.display = 'none';
+    document.getElementById('loopSection').style.display = 'none';
+    document.getElementById('brandArea').style.display = '';
+    document.getElementById('disconnectInlineBtn').style.display = 'none';
+    document.getElementById('statusDot').className = 'status-dot pairing';
+    setStatus('connecting'); // uses current lang
   } else {
-    $('statusDot').className = 'status-dot disconnected';
-    setStatusText('notConfigured');  // data-i18n='notConfigured'
+    // No config → show config form
+    setStatus('notConfigured'); // uses current lang
   }
-  // loadConfig 已经调用了 applyI18n，statusText 会被正确翻译
-  // 实际状态 500ms 后从 background 拉取（给 SW 重连时间）
+
+  // Step 4: get real status from background (after brief delay for SW to reconnect)
   setTimeout(fetchStatus, 500);
 })();
