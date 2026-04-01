@@ -25,6 +25,7 @@ const S = {
   wsConnected: false,
   wsPendingConnectId: null,
   wsPendingNonce: null,
+  pairingPending: false,   // 等待配对批准中
 
   // 身份
   browserId: '',
@@ -105,6 +106,7 @@ function broadcastStatus() {
   broadcast({
     type: 'status_update',
     wsConnected: S.wsConnected,
+    pairingPending: S.pairingPending,
     browserId: S.browserId,
     wsUrl: S.wsUrl,
     tabCount: S.tabCount,
@@ -189,19 +191,31 @@ async function wsConnect(url, token, browserId) {
   try { S.ws = new WebSocket(url); }
   catch(e) { wsScheduleReconnect(); return; }
 
-  S.ws.onopen = () => {
+  S.ws.onopen = async () => {
     const cid = 'connect-' + Date.now();
     S.wsPendingConnectId = cid;
     S.wsPendingNonce = null;
-    wsSend({ type:'req', id:cid, method:'connect', params: {
+
+    // 已配对时使用 deviceToken，未配对时发带 device identity 的 connect 触发配对
+    const stored = await chrome.storage.local.get(['deviceToken']);
+    const deviceToken = stored.deviceToken || null;
+
+    const params = {
       minProtocol:3, maxProtocol:3,
       client:{ id:'webchat', version:'1.71.3', platform:'web', mode:'webchat' },
       role:'operator', scopes:CONNECT_SCOPES,
       caps:[], commands:[], permissions:{},
-      auth:{ token },
+      auth: deviceToken ? { token, deviceToken } : { token },
       locale:'zh-CN',
       userAgent:`clawtab/${VERSION}${browserId?' ('+browserId+')':''}`,
-    }});
+    };
+
+    // 带 device identity 公钥（告诉 Gateway 我是谁，触发 challenge）
+    if (S.deviceIdentity) {
+      params.device = { id: S.deviceIdentity.id, publicKey: S.deviceIdentity.publicKeyRaw };
+    }
+
+    wsSend({ type:'req', id:cid, method:'connect', params });
   };
 
   S.ws.onmessage = async (ev) => {
@@ -225,18 +239,22 @@ async function wsConnect(url, token, browserId) {
 }
 
 async function wsHandleMsg(msg) {
-  // connect.challenge → 用 device identity 重签
+  // connect.challenge → 用 device identity 签名 nonce，重发 connect
   if (msg.type === 'event' && msg.event === 'connect.challenge') {
     S.wsPendingNonce = msg.payload?.nonce || null;
-    if (S.deviceIdentity && S.wsPendingNonce) {
+    if (S.deviceIdentity && S.wsPendingNonce && S.wsPendingConnectId) {
       const role = 'operator', scopes = CONNECT_SCOPES;
       const signedAtMs = Date.now();
       const device = await signConnect(S.deviceIdentity, { token:S.wsToken, role, scopes, signedAtMs, nonce:S.wsPendingNonce });
+      const stored = await chrome.storage.local.get(['deviceToken']);
       wsSend({ type:'req', id:S.wsPendingConnectId, method:'connect', params:{
         minProtocol:3, maxProtocol:3,
         client:{ id:'webchat', version:'1.71.3', platform:'web', mode:'webchat' },
         role, scopes, caps:[], commands:[], permissions:{},
-        auth:{ token:S.wsToken }, device,
+        auth: stored.deviceToken
+          ? { token:S.wsToken, deviceToken: stored.deviceToken }
+          : { token:S.wsToken },
+        device,
         locale:'zh-CN',
         userAgent:`clawtab/${VERSION}${S.browserId?' ('+S.browserId+')':''}`,
       }});
@@ -249,22 +267,34 @@ async function wsHandleMsg(msg) {
     S.wsPendingConnectId = null;
     if (msg.ok) {
       S.wsConnected = true;
+      S.pairingPending = false;
       S.wsReconnectDelay = 1000;
       clearTimeout(S.wsReconnectTimer);
+      // 存 deviceToken（配对成功后 Gateway 颁发，下次直接用）
+      if (msg.payload?.auth?.deviceToken) {
+        await chrome.storage.local.set({ deviceToken: msg.payload.auth.deviceToken });
+        console.log('[ClawTab] deviceToken saved');
+      }
+      console.log('[ClawTab] connected, scopes:', msg.payload?.auth?.scopes || msg.payload?.scopes);
       drawIcon('connected');
       broadcastStatus();
-      // 初始化：确保 session 存在，开始轮询
       await ensureSession();
       await syncLastSeenId();
       startPolling();
-      // 上报标签页
       reportTabs();
     } else {
       const code = msg.payload?.code || '';
-      console.warn('[ClawTab] connect failed:', code, msg.payload?.message);
-      // NOT_PAIRED 不重试（需要用户操作）
-      if (code === 'NOT_PAIRED') { drawIcon('disconnected'); broadcastStatus(); }
-      else wsScheduleReconnect();
+      const errMsg = msg.payload?.message || '';
+      console.warn('[ClawTab] connect failed:', code, errMsg);
+      if (code === 'NOT_PAIRED') {
+        S.wsConnected = false;
+        S.pairingPending = true;
+        drawIcon('connecting');
+        broadcastStatus();
+        // 不重连，等待用户在 Gateway 批准后手动重连
+      } else {
+        wsScheduleReconnect();
+      }
     }
     return;
   }

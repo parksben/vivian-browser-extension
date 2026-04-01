@@ -16,8 +16,8 @@ const I18N = {
     tabsLabel: '监控标签页',
     lastCmd: '最后指令：',
     connected: '已连接',
-    connecting: '连接中…',
-    pairing: '等待配对…',
+    connecting: '连接中… ⏳',
+    pairing: '等待配对批准…',
     disconnected: '未连接',
     connecting2: '连接中…',
     task: '任务进度',
@@ -26,6 +26,7 @@ const I18N = {
     taskDone: '已完成',
     taskFailed: '失败',
     taskCancelled: '已取消',
+    pairingHint: '请在 Gateway 运行 openclaw devices approve 批准连接',
   },
   en: {
     config: 'Connection',
@@ -38,8 +39,8 @@ const I18N = {
     tabsLabel: 'Active Tabs',
     lastCmd: 'Last Command:',
     connected: 'Connected',
-    connecting: 'Connecting…',
-    pairing: 'Awaiting pairing…',
+    connecting: 'Connecting… ⏳',
+    pairing: 'Awaiting pairing approval…',
     disconnected: 'Disconnected',
     connecting2: 'Connecting…',
     task: 'Task Progress',
@@ -48,6 +49,7 @@ const I18N = {
     taskDone: 'Done',
     taskFailed: 'Failed',
     taskCancelled: 'Cancelled',
+    pairingHint: 'Run: openclaw devices approve on your Gateway',
   }
 };
 
@@ -91,6 +93,7 @@ const taskNameEl      = $('taskName');
 const taskStepsEl     = $('taskSteps');
 const cancelTaskBtn   = $('cancelTaskBtn');
 const occupiedBanner  = $('occupiedBanner');
+const pairingBanner   = $('pairingBanner');
 
 // ── Task Panel ────────────────────────────────────────────────────────────
 
@@ -157,6 +160,15 @@ function updateStatusUI(data) {
   statBrowserName.textContent = data.browserId || '—';
   statTabs.textContent = data.tabCount ?? 0;
   if (data.lastCmd) statLastCmd.textContent = data.lastCmd;
+
+  // 配对提示
+  const needsPairing = !data.wsConnected && data.pairingPending;
+  if (needsPairing) {
+    pairingBanner.style.display = '';
+    pairingBanner.innerHTML = `⏳ ${t('pairing')}<br><code>openclaw devices approve</code>`;
+  } else {
+    pairingBanner.style.display = 'none';
+  }
 
   // 占用 banner
   if (data.taskStatus === 'running' && data.taskAgentId) {

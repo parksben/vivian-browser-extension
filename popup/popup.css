@@ -382,3 +382,21 @@ input.input-error {
   background: #22c55e;
   animation: pulse 1.2s ease-in-out infinite;
 }
+
+.pairing-banner {
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+.pairing-banner code {
+  background: #dbeafe;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: monospace;
+  font-size: 11px;
+}
