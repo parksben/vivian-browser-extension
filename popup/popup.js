@@ -102,7 +102,7 @@ function render(data) {
 
   // Status badge
   const loopStatus = loop?.status || 'idle';
-  const dotClass = wsConnected ? (DOT_CLASS[loopStatus] || 'connected') : (pairingPending ? 'pairing' : 'disconnected');
+  const dotClass = (wsConnected || reconnecting) ? (DOT_CLASS[loopStatus] || 'connected') : (pairingPending ? 'pairing' : 'disconnected');
   $('statusDot').className = `status-dot ${dotClass}`;
   const statusKey = wsConnected ? loopStatus : (pairingPending ? 'pairing' : 'disconnected');
   $('statusText').textContent = wsConnected
@@ -149,7 +149,7 @@ function render(data) {
 
   // Loop section: 只在任务执行中显示（非 idle）
   const loopEl = $('loopSection');
-  const hasTask = wsConnected && loop?.status && loop.status !== 'idle';
+  const hasTask = (wsConnected || reconnecting) && loop?.status && loop.status !== 'idle';
   if (hasTask) {
     loopEl.style.display = '';
     renderLoop(loop);

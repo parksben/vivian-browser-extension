@@ -25,6 +25,7 @@ const S = {
   wsReconnectDelay: 1000, wsReconnectTimer: null,
   wsReconnectCount: 0,   // 连续失败次数
   wsGaveUp: false,       // 超过3次，停止重连
+  wsDisconnectTimer: null, // 断线保护 timer（避免闪烁）
   wsPendingConnectId: null, wsPendingNonce: null,
 
   // Identity
@@ -268,6 +269,7 @@ async function wsConnect(url,token,browserId) {
       if (msg.ok) {
         S.wsConnected=true; S.pairingPending=false; S.wsReconnectDelay=1000;
         S.wsReconnectCount=0; S.wsGaveUp=false;
+        clearTimeout(S.wsDisconnectTimer); S.wsDisconnectTimer=null;
         clearTimeout(S.wsReconnectTimer);
         if (msg.payload?.auth?.deviceToken) {
           await chrome.storage.local.set({deviceToken:msg.payload.auth.deviceToken});
@@ -294,7 +296,15 @@ async function wsConnect(url,token,browserId) {
       setLoopStatus('failed','Connection lost during task',{errorMsg:'WebSocket disconnected'});
       sendResult({cmdId:S.loop.cmdId,ok:false,error:'Connection lost',errorCode:'DISCONNECTED'});
     }
-    stopPolling(); drawIcon(S.pairingPending?'connecting':'idle'); broadcastStatus();
+    stopPolling();
+    // 断线保护：延迟 1.5s 再更新 UI，避免短暂断线引起界面闪烁
+    clearTimeout(S.wsDisconnectTimer);
+    S.wsDisconnectTimer = setTimeout(() => {
+      if (!S.wsConnected) {  // 1.5s 内没有重连成功才更新 UI
+        drawIcon(S.wsGaveUp ? 'idle' : 'connecting');
+        broadcastStatus();
+      }
+    }, 1500);
     wsScheduleReconnect();
   };
 }
