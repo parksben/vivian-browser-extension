@@ -365,11 +365,18 @@ $('importFile').addEventListener('change', async (e) => {
     const cfg = JSON.parse(text);
     if (!cfg._clawtab && !cfg.gatewayUrl) throw new Error('invalid');
     const url = cfg.gatewayUrl||''; const token = cfg.gatewayToken||''; const name = cfg.browserName||'';
+    // 存储
     await chrome.storage.local.set({ gatewayUrl:url, gatewayToken:token, browserName:name,
       gatewayUrlDraft:url, gatewayTokenDraft:token, browserNameDraft:name });
+    // 填入表单
     $('gatewayUrl').value = url;
     $('gatewayToken').value = token;
     $('browserName').value = name;
+    // 断开当前连接，展示配置区让用户确认后重新连接
+    try { await chrome.runtime.sendMessage({type:'disconnect'}); } catch(_){}
+    $('configSection').style.display = '';
+    $('loopSection').style.display = 'none';
+    $('statsBar').style.display = 'none';
     showToast(t('importSuccess'));
   } catch(_) {
     showToast(t('importError'), true);
