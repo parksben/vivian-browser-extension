@@ -10,7 +10,7 @@ const SB_I18N = {
     connected:    'Connected',
     disconnected: 'Not connected',
     reconnecting: 'Reconnecting…',
-    placeholderOn:  'Message… (Enter to send, Shift+Enter for newline)',
+    placeholderOn:  'Message… (⌘/Ctrl+Enter to send)',
     placeholderOff: 'Connect OpenClaw in the extension popup first',
     placeholderReconnecting: 'Reconnecting, please wait…',
     emptyConnect: 'Connect OpenClaw in the extension popup first',
@@ -20,7 +20,7 @@ const SB_I18N = {
     connected:    '已连接',
     disconnected: '未连接',
     reconnecting: '重连中…',
-    placeholderOn:  '发消息… (Enter 发送，Shift+Enter 换行)',
+    placeholderOn:  '发消息… (⌘/Ctrl+Enter 发送)',
     placeholderOff: '请先在插件中连接 OpenClaw',
     placeholderReconnecting: '重连中，请稍候…',
     emptyConnect: '请先在插件面板中连接 OpenClaw',
@@ -381,7 +381,7 @@ async function init() {
 document.getElementById('sendBtn').addEventListener('click', sendMessage);
 
 document.getElementById('msgInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
     sendMessage();
   }
