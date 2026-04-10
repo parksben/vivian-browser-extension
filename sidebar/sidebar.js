@@ -42,6 +42,8 @@ const STATE = {
   messages:      [],
   polling:       null,
   sending:       false,
+  waiting:       false,   // true while waiting for agent reply
+  waitingTimer:  null,    // safety-timeout handle
 };
 
 // Default agent list (overridden if agents.list API works)
@@ -118,6 +120,29 @@ const EMPTY_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="40" heigh
   stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
 </svg>`;
+
+// ── Thinking indicator ────────────────────────────────────────────────────
+
+function showThinking() {
+  hideThinking(); // avoid duplicates
+  const el = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'sb-thinking';
+  div.id = 'thinkingIndicator';
+  div.innerHTML = `<span class="sb-thinking-dots"><span></span><span></span><span></span></span>`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function hideThinking() {
+  const el = document.getElementById('thinkingIndicator');
+  if (el) el.remove();
+}
+
+function updateSendBtn() {
+  const btn = document.getElementById('sendBtn');
+  if (btn) btn.disabled = !STATE.wsConnected || STATE.waiting;
+}
 
 // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -228,6 +253,14 @@ async function fetchHistory() {
     }
     STATE.messages.push(...freshMsgs);
 
+    // If we were waiting for a reply, check if an assistant message arrived
+    if (STATE.waiting && freshMsgs.some(m => m.role === 'assistant')) {
+      STATE.waiting = false;
+      clearTimeout(STATE.waitingTimer);
+      hideThinking();
+      updateSendBtn();
+    }
+
     // Incremental append (avoid full re-render flicker)
     const el = document.getElementById('messages');
     const emptyEl = el.querySelector('.sb-empty');
@@ -245,7 +278,7 @@ async function fetchHistory() {
 async function sendMessage() {
   const input = document.getElementById('msgInput');
   const text  = input.value.trim();
-  if (!text || !STATE.wsConnected || STATE.sending) return;
+  if (!text || !STATE.wsConnected || STATE.sending || STATE.waiting) return;
 
   STATE.sending = true;
   const btn = document.getElementById('sendBtn');
@@ -264,11 +297,22 @@ async function sendMessage() {
       sessionKey: sessionKey(),
       message:    text,
     });
+    // Show thinking indicator and lock send until agent replies
+    STATE.waiting = true;
+    updateSendBtn();
+    showThinking();
+    // Safety timeout: auto-clear after 60s
+    clearTimeout(STATE.waitingTimer);
+    STATE.waitingTimer = setTimeout(() => {
+      STATE.waiting = false;
+      hideThinking();
+      updateSendBtn();
+    }, 60000);
   } catch (e) {
     console.warn('[Sidebar] send failed:', e.message);
   } finally {
     STATE.sending = false;
-    btn.disabled  = !STATE.wsConnected;
+    if (!STATE.waiting) updateSendBtn();
   }
 }
 
@@ -282,32 +326,29 @@ function updateSessionDisplay() {
 function updateStatus() {
   const dot       = document.getElementById('statusDot');
   const text      = document.getElementById('statusText');
-  const btn       = document.getElementById('sendBtn');
   const input     = document.getElementById('msgInput');
   const inputArea = document.querySelector('.sb-input-area');
 
   if (STATE.wsConnected) {
     dot.className     = 'sb-status-dot connected';
     text.textContent  = sbt('connected');
-    btn.disabled      = false;
     input.disabled    = false;
     input.placeholder = sbt('placeholderOn');
     inputArea?.classList.remove('sb-disconnected');
   } else if (STATE.reconnecting) {
     dot.className     = 'sb-status-dot connecting';
     text.textContent  = sbt('reconnecting');
-    btn.disabled      = true;
     input.disabled    = true;
     input.placeholder = sbt('placeholderReconnecting');
     inputArea?.classList.add('sb-disconnected');
   } else {
     dot.className     = 'sb-status-dot';
     text.textContent  = sbt('disconnected');
-    btn.disabled      = true;
     input.disabled    = true;
     input.placeholder = sbt('placeholderOff');
     inputArea?.classList.add('sb-disconnected');
   }
+  updateSendBtn();
 }
 
 // ── Agent selector ─────────────────────────────────────────────────────────
@@ -337,8 +378,12 @@ function switchAgent(newAgent) {
   STATE.selectedAgent = newAgent;
   STATE.messages      = [];
   STATE.lastMsgId     = null;
+  STATE.waiting       = false;
+  clearTimeout(STATE.waitingTimer);
+  hideThinking();
   stopPolling();
   updateSessionDisplay();
+  updateSendBtn();
   renderAll();
   if (STATE.wsConnected) {
     fetchHistory();
@@ -381,7 +426,7 @@ async function init() {
 document.getElementById('sendBtn').addEventListener('click', sendMessage);
 
 document.getElementById('msgInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !STATE.waiting) {
     e.preventDefault();
     sendMessage();
   }
