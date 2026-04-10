@@ -11,10 +11,11 @@ ClawTab 是 OpenClaw 生态的浏览器客户端，让 AI Agent 能够：
 ## 核心功能需求
 
 ### F1: Gateway 连接（✅ 已实现）
-- 用户输入 Gateway URL + Token + Browser Name
+- 用户输入 Gateway URL + Token + **渠道名称（Channel Name）**
 - WebSocket 连接，标准 OpenClaw 握手协议
 - 连接状态实时显示（连接中/已连接/断开/重连中）
 - 配置自动保存到 chrome.storage
+- Session Key 格式：`agent:main:clawtab-{渠道名称}`，channel 为 `webchat`（Web UI 可见）
 
 ### F2: 设备配对（✅ 基本实现，待验证）
 - 首次连接自动生成 Ed25519 密钥对
@@ -68,14 +69,28 @@ ClawTab 是 OpenClaw 生态的浏览器客户端，让 AI Agent 能够：
 - 3 次失败后显示配置面板 + 错误提示
 - NOT_PAIRED 状态下不触发自动重连（改为配对轮询）
 
+### F9: 连接握手消息（✅ 已实现）
+- 连接成功后自动向 clawtab session 发送一条 `deliver:true` 的握手消息
+- 消息内容：`🦾 ClawTab 已连接 · {渠道名称} · N 个标签页`
+- 效果：Web UI 的会话列表中立即出现该 session，无需手动查找
+
+### F10: 常驻侧边栏聊天（✅ 已实现）
+- 连接成功后自动打开 Chrome Side Panel（Chrome 114+ 支持）
+- 侧边栏（`sidebar/`）提供完整聊天 UI：
+  - **Agent 选择器**：下拉切换 main / dajin / coder 等，每个 agent 独立 session（`agent:{id}:clawtab-{渠道名称}`），切换时历史清空
+  - **消息气泡**：用户消息右对齐（紫色），Agent 回复左对齐（白色），支持粗体 / 内联代码 / 换行
+  - **clawtab_cmd 摘要行**：Agent 发出的浏览器指令显示为 `⚙️ 感知页面 · 截图` 等紧凑样式，不展示原始 JSON
+  - **clawtab_result 隐藏**：内部结果消息不在聊天中显示
+  - **轮询**：每 3s 增量拉取新消息，追加不闪屏
+  - **发送**：Enter 发送，Shift+Enter 换行；消息通过 `deliver:true` 触发 Agent 响应
+
+### F11: 连接后隐藏设置按钮（✅ 已实现）
+- Popup 连接成功状态下，右上角齿轮设置按钮自动隐藏
+- 未连接 / 配对等待状态下正常显示
+
 ## 待开发功能
 
-### F9: Agent 选择器（⏸️ 暂时移除）
-- 曾实现过，后来在重构中移除
-- 原设计：连接后勾选允许控制浏览器的 Agent 列表
-- 如需恢复，参考 git 历史 commit `0146b3f`
-
-### F10: 高级 step 类型
+### F12: 高级 step 类型
 - `hover` — 鼠标悬停
 - `drag_drop` — 拖拽
 - `select_option` — 下拉选择
@@ -83,20 +98,14 @@ ClawTab 是 OpenClaw 生态的浏览器客户端，让 AI Agent 能够：
 - `iframe_switch` — iframe 切换
 - `keyboard` — 键盘事件（快捷键等）
 
-### F11: 任务队列
+### F13: 任务队列
 - 当前是拒绝并发，未来可以排队等待
 - 优先级机制
 
-### F12: 安全增强
+### F14: 安全增强
 - step 执行前的安全检查（危险 URL、恶意 JS 检测）
 - 用户确认机制（高风险操作弹窗确认）
 - 操作审计日志
-
-### F13: UI/UX 改进
-- 连接成功后 header 布局优化（标题居左，状态+按钮居右）
-- 任务执行时的进度条/动画
-- 历史任务列表
-- 错误信息更友好的展示
 
 ## 当前 Bug / 待修复项
 
@@ -107,7 +116,8 @@ ClawTab 是 OpenClaw 生态的浏览器客户端，让 AI Agent 能够：
 | 3 | 设置菜单(⚙️)无法弹出 — null DOM 引用崩溃 | ✅ 已修复（popup.js 重写） |
 | 4 | statusText 中英文反转 | ✅ 已修复（data-i18n 统一机制） |
 | 5 | 配对后端到端通信 | ❓ 待验证 |
-| 6 | 连接后 header 布局问题 | ❓ 待验证 |
+| 6 | 工具栏图标显示为 canvas 绘制的"C"而非设计 logo | ✅ 已修复（idle/connected 状态使用 PNG 文件） |
+| 7 | Web UI 中找不到 clawtab session | ✅ 已修复（channel 改为 webchat + 握手消息） |
 
 ## 技术约束
 

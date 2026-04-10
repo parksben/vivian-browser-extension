@@ -9,11 +9,15 @@ ClawTab 是一个 Chrome 浏览器扩展，将浏览器连接到 OpenClaw Gatewa
 ```
 clawtab/
 ├── manifest.json              # Chrome Extension Manifest V3
-├── background.js              # Service Worker — WebSocket 通信、设备配对、任务执行引擎
+├── background.js              # Service Worker — WebSocket 通信、设备配对、任务执行引擎、sidebar 消息处理
 ├── popup/
 │   ├── popup.html             # 弹出窗口 HTML
 │   ├── popup.css              # 样式
 │   └── popup.js               # 弹出窗口逻辑 — UI 渲染、事件绑定、i18n
+├── sidebar/
+│   ├── sidebar.html           # 侧边栏 HTML（Chrome Side Panel）
+│   ├── sidebar.css            # 侧边栏样式（与 popup 同风格）
+│   └── sidebar.js             # 侧边栏逻辑 — 聊天、Agent 切换、轮询
 ├── content/
 │   └── content.js             # Content Script — 页面内 JS 执行、截图
 ├── icons/

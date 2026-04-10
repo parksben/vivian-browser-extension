@@ -5,12 +5,14 @@
 ## Features
 
 - 🔌 **Connect to any OpenClaw Gateway** — local or remote, via WebSocket
+- 💬 **Persistent sidebar chat** — a side panel opens automatically after connecting; chat with any agent directly from your browser
+- 🤖 **Multi-agent selector** — switch between agents in the sidebar; each agent has its own independent session and chat history
 - 👁️ **Tab awareness** — list all open tabs, read page content, and capture screenshots
-- 🤖 **Agent selector** — choose which agents are allowed to control your browser
 - ⚡ **Task execution engine** — agents send multi-step task plans; ClawTab executes and reports progress in real time
 - 🔒 **Exclusive agent lock** — only one agent can occupy the browser at a time; concurrent requests are rejected with a clear reason
-- 🏷️ **Browser identity** — set a custom name so the Gateway knows which browser is connected
-- 💾 **Auto-save** — URL, token, and browser name are remembered across sessions
+- 🏷️ **Channel identity** — set a channel name so the Gateway creates a dedicated `webchat` session visible in the Web UI
+- 🤝 **Auto handshake** — ClawTab sends a greeting message on connect so the session appears immediately in the OpenClaw Web UI
+- 💾 **Auto-save** — URL, token, and channel name are remembered across sessions
 - 📌 **Fixed extension ID** — pinned via `manifest.json` key, survives reinstalls
 - 🌐 **Bilingual UI** — switch between Chinese / English in the popup
 
@@ -26,9 +28,10 @@ Fixed extension ID: `olfpncdbjlggonplhnlnbhkfianddhmp`
 ## Setup
 
 1. Click the ClawTab icon in your toolbar
-2. Fill in **Gateway URL**, **Access Token**, and an optional **Browser Name**
+2. Fill in **Gateway URL**, **Access Token**, and a **Channel Name** (used as the session identifier in the Web UI)
 3. Click **Connect**
-4. Once connected, check which **Agents** are allowed to control this browser
+4. The sidebar opens automatically — chat with agents directly from there
+5. The session `agent:main:clawtab-{channel}` appears in the OpenClaw Web UI
 
 ## Gateway Configuration
 
@@ -129,12 +132,14 @@ MIT
 ## 功能特性
 
 - 🔌 **连接任意 OpenClaw Gateway** — 本地或远程，通过 WebSocket
+- 💬 **常驻侧边栏聊天** — 连接后自动打开侧边栏，直接在浏览器中与 Agent 对话
+- 🤖 **多 Agent 切换** — 侧边栏支持切换不同 Agent，每个 Agent 维护独立会话和历史记录
 - 👁️ **标签页感知** — 列出所有标签页、读取页面内容、截图
-- 🤖 **Agent 选择器** — 选择哪些 Agent 可以控制你的浏览器
 - ⚡ **任务执行引擎** — Agent 发送多步骤任务计划，ClawTab 执行并实时上报进度
 - 🔒 **互斥占用锁** — 同一时间只有一个 Agent 可以占用浏览器，并发请求会被直接拒绝并说明原因
-- 🏷️ **浏览器标识** — 设置自定义名称，让 Gateway 识别是哪台浏览器
-- 💾 **自动保存** — URL、Token、浏览器名称在会话间持久保存
+- 🏷️ **渠道标识** — 设置渠道名称，Gateway 会创建专属 `webchat` 会话并在 Web UI 中可见
+- 🤝 **自动握手** — 连接成功后自动发送握手消息，Web UI 中会话即刻出现
+- 💾 **自动保存** — URL、Token、渠道名称在会话间持久保存
 - 📌 **固定 Extension ID** — 通过 `manifest.json` key 锁定，重装不变
 - 🌐 **中英文切换** — popup 右上角一键切换语言
 
@@ -150,9 +155,10 @@ MIT
 ## 使用
 
 1. 点击工具栏中的 ClawTab 图标
-2. 填写 **Gateway URL**、**Access Token**，以及可选的**浏览器名称**
+2. 填写 **Gateway URL**、**Access Token**，以及**渠道名称**（作为 Web UI 中的会话标识）
 3. 点击**保存并连接**
-4. 连接成功后，勾选允许控制浏览器的 Agent
+4. 浏览器右侧自动弹出侧边栏，在侧边栏中直接与 Agent 对话
+5. Web UI 中可找到 `agent:main:clawtab-{渠道名称}` 会话
 
 ## Gateway 配置
 
