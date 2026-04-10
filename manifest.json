@@ -9,8 +9,12 @@
     "activeTab",
     "scripting",
     "storage",
-    "alarms"
+    "alarms",
+    "sidePanel"
   ],
+  "side_panel": {
+    "default_path": "sidebar/sidebar.html"
+  },
   "host_permissions": [
     "<all_urls>"
   ],

@@ -294,6 +294,11 @@ async function wsConnect(url,token,browserId) {
         await ensureSession(); await syncLastSeenId();
         startPolling(); reportTabs();
         sendHandshake();
+        // Open side panel in the active window (best-effort, requires user gesture in some Chrome versions)
+        try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab?.windowId) await chrome.sidePanel.open({ windowId: tab.windowId });
+        } catch(_) {}
         // 不在连接时自动截图，截图只在任务执行中更新
       } else {
         const code=msg.payload?.code||'';
@@ -957,6 +962,42 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
           sendResponse({ok:true});
         } else sendResponse({ok:false,error:'No active task'});
         break;
+
+      // ── Sidebar handlers ──
+      case 'sidebar_fetch_history':
+        (async()=>{
+          try {
+            const res = await wsRequest('chat.history',{
+              sessionKey: msg.sessionKey,
+              limit: 50,
+              ...(msg.after ? {after: msg.after} : {}),
+            }, 10000);
+            sendResponse({ok:true, messages: res.messages||[]});
+          } catch(e) { sendResponse({ok:false, error:e.message, messages:[]}); }
+        })();
+        return true;
+
+      case 'sidebar_ensure_and_send':
+        (async()=>{
+          try {
+            // Ensure session exists (idempotent)
+            await wsRequest('sessions.create',{channel:'webchat',sessionKey:msg.sessionKey},8000)
+              .catch(e=>{ if(!e.code==='SESSION_EXISTS'&&!e.message?.includes('exists')) throw e; });
+            await wsRequest('chat.send',{sessionKey:msg.sessionKey,message:msg.message,deliver:true},10000);
+            sendResponse({ok:true});
+          } catch(e) { sendResponse({ok:false, error:e.message}); }
+        })();
+        return true;
+
+      case 'sidebar_list_agents':
+        (async()=>{
+          try {
+            const res = await wsRequest('agents.list',{},5000);
+            sendResponse({ok:true, agents: res.agents||res.list||[]});
+          } catch(e) { sendResponse({ok:false, agents:[]}); }
+        })();
+        return true;
+
       default: sendResponse({ok:false,error:'unknown'});
     }
   })();

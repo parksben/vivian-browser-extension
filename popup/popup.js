@@ -14,8 +14,8 @@ const I18N = {
   en: {
     // Connection
     config:          'Connection',
-    browserName:     'Browser Name',
-    browserNameHint: '(identifier)',
+    browserName:     'Channel Name',
+    browserNameHint: '(channel id)',
     connect:         'Connect',
     disconnect:      'Disconnect',
     connecting:      'Connecting…',
@@ -53,8 +53,8 @@ const I18N = {
   },
   zh: {
     config:          '连接配置',
-    browserName:     '浏览器名称',
-    browserNameHint: '（标识）',
+    browserName:     '渠道名称',
+    browserNameHint: '（频道 ID）',
     connect:         '保存并连接',
     disconnect:      '断开',
     connecting:      '连接中…',
