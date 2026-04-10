@@ -1,13 +1,21 @@
 /**
  * ClawTab floatball.js — content script
- * Floating ball + expandable chat panel injected into every page.
+ * Floating ball + expandable chat panel with drag support.
  */
 (function () {
   'use strict';
   if (window.__ctFloatball) return;
   window.__ctFloatball = true;
 
-  // ── State ──────────────────────────────────────────────────────────────────
+  // ── Constants ──────────────────────────────────────────────────────────────
+  const BALL_SIZE  = 52;   // px — must match CSS
+  const PANEL_W    = 360;  // px — must match CSS
+  const PANEL_H_MAX = 520; // px — maximum panel height
+  const PANEL_H_MIN = 280; // px — minimum usable height
+  const MARGIN     = 16;   // px — safe distance from viewport edges
+  const GAP        = 8;    // px — gap between ball and panel
+
+  // ── Chat state ─────────────────────────────────────────────────────────────
   const STATE = {
     wsConnected:   false,
     channelName:   '',
@@ -19,6 +27,12 @@
     panelOpen:     false,
   };
 
+  // Ball position (top-left corner of ball, in viewport px)
+  const POS = {
+    x: window.innerWidth  - MARGIN - BALL_SIZE,
+    y: window.innerHeight - MARGIN - BALL_SIZE,
+  };
+
   const DEFAULT_AGENTS = ['main', 'dajin', 'coder', 'wechat-new', 'biz-coder'];
 
   // ── Build DOM ──────────────────────────────────────────────────────────────
@@ -28,7 +42,7 @@
 
   root.innerHTML = `
     <div id="ct-panel">
-      <div class="ct-header">
+      <div class="ct-header" id="ct-panel-header">
         <div class="ct-brand">
           <img class="ct-logo" src="${chrome.runtime.getURL('icons/icon48.png')}" alt="">
           <span class="ct-title">ClawTab</span>
@@ -47,8 +61,10 @@
         <textarea class="ct-input" id="ct-input" rows="1"
           placeholder="发消息…（Enter 发送，Shift+Enter 换行）"></textarea>
         <button class="ct-send-btn" id="ct-send-btn" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
           </svg>
         </button>
       </div>
@@ -61,7 +77,206 @@
 
   document.documentElement.appendChild(root);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  const ball  = document.getElementById('ct-ball');
+  const panel = document.getElementById('ct-panel');
+
+  // ── Position helpers ───────────────────────────────────────────────────────
+
+  /** Clamp ball position within viewport with safe margins */
+  function clampBall() {
+    POS.x = Math.max(MARGIN, Math.min(POS.x, window.innerWidth  - BALL_SIZE - MARGIN));
+    POS.y = Math.max(MARGIN, Math.min(POS.y, window.innerHeight - BALL_SIZE - MARGIN));
+  }
+
+  /** Apply POS to ball element */
+  function applyBallPos() {
+    clampBall();
+    ball.style.left = POS.x + 'px';
+    ball.style.top  = POS.y + 'px';
+    if (STATE.panelOpen) positionPanel();
+  }
+
+  /**
+   * Calculate and apply panel position + height.
+   * Opens above the ball if there's enough room, otherwise below.
+   * Aligns horizontally so panel stays within the viewport.
+   */
+  function positionPanel() {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // Available vertical space above / below the ball
+    const spaceAbove = POS.y - MARGIN - GAP;
+    const spaceBelow = vh - (POS.y + BALL_SIZE) - MARGIN - GAP;
+
+    // Choose direction: prefer above; fall back to below; take max if neither fits
+    let openAbove, panelH;
+    if (spaceAbove >= PANEL_H_MIN || spaceAbove >= spaceBelow) {
+      openAbove = true;
+      panelH = Math.min(PANEL_H_MAX, spaceAbove);
+    } else {
+      openAbove = false;
+      panelH = Math.min(PANEL_H_MAX, spaceBelow);
+    }
+    panelH = Math.max(PANEL_H_MIN, panelH);
+
+    // Vertical position
+    const panelTop = openAbove
+      ? POS.y - panelH - GAP
+      : POS.y + BALL_SIZE + GAP;
+
+    // Horizontal: right-align panel with right edge of ball, then clamp
+    let panelLeft = POS.x + BALL_SIZE - PANEL_W;
+    panelLeft = Math.max(MARGIN, Math.min(panelLeft, vw - PANEL_W - MARGIN));
+
+    panel.style.top    = panelTop + 'px';
+    panel.style.left   = panelLeft + 'px';
+    panel.style.height = panelH + 'px';
+  }
+
+  // ── Drag — ball ────────────────────────────────────────────────────────────
+
+  function makeBallDraggable() {
+    let dragging = false, moved = false;
+    let startMouseX, startMouseY, startPosX, startPosY;
+
+    function onStart(clientX, clientY) {
+      dragging = true;
+      moved    = false;
+      startMouseX = clientX;
+      startMouseY = clientY;
+      startPosX   = POS.x;
+      startPosY   = POS.y;
+      ball.classList.add('ct-dragging');
+      document.body.style.userSelect = 'none';
+    }
+
+    function onMove(clientX, clientY) {
+      if (!dragging) return;
+      const dx = clientX - startMouseX;
+      const dy = clientY - startMouseY;
+      if (!moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) moved = true;
+      POS.x = startPosX + dx;
+      POS.y = startPosY + dy;
+      applyBallPos();
+    }
+
+    function onEnd() {
+      if (!dragging) return;
+      dragging = false;
+      ball.classList.remove('ct-dragging');
+      document.body.style.userSelect = '';
+      if (!moved) {
+        // It was a tap/click — toggle panel
+        if (STATE.panelOpen) closePanel(); else openPanel();
+      }
+    }
+
+    // Mouse
+    ball.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      onStart(e.clientX, e.clientY);
+    });
+    document.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+    document.addEventListener('mouseup',   () => onEnd());
+
+    // Touch
+    ball.addEventListener('touchstart', e => {
+      const t = e.touches[0];
+      onStart(t.clientX, t.clientY);
+    }, { passive: true });
+    ball.addEventListener('touchmove', e => {
+      const t = e.touches[0];
+      onMove(t.clientX, t.clientY);
+    }, { passive: true });
+    ball.addEventListener('touchend', () => onEnd());
+  }
+
+  // ── Drag — panel (via header) ──────────────────────────────────────────────
+
+  function makePanelDraggable() {
+    const header = document.getElementById('ct-panel-header');
+    let dragging = false;
+    // Store panel's absolute left/top during drag (independent of ball)
+    let panelLeft, panelTop;
+    let startMouseX, startMouseY;
+
+    function onStart(clientX, clientY) {
+      dragging    = true;
+      startMouseX = clientX;
+      startMouseY = clientY;
+      panelLeft   = parseInt(panel.style.left,  10) || 0;
+      panelTop    = parseInt(panel.style.top,   10) || 0;
+      document.body.style.userSelect = 'none';
+    }
+
+    function onMove(clientX, clientY) {
+      if (!dragging) return;
+      const panelH = parseInt(panel.style.height, 10) || PANEL_H_MIN;
+      let newLeft  = panelLeft + (clientX - startMouseX);
+      let newTop   = panelTop  + (clientY - startMouseY);
+      // Clamp panel within viewport
+      newLeft = Math.max(MARGIN, Math.min(newLeft, window.innerWidth  - PANEL_W  - MARGIN));
+      newTop  = Math.max(MARGIN, Math.min(newTop,  window.innerHeight - panelH   - MARGIN));
+      panel.style.left = newLeft + 'px';
+      panel.style.top  = newTop  + 'px';
+    }
+
+    function onEnd() {
+      dragging = false;
+      document.body.style.userSelect = '';
+    }
+
+    // Mouse
+    header.addEventListener('mousedown', e => {
+      // Don't intercept clicks on interactive controls inside header
+      if (e.target.closest('select, button')) return;
+      e.preventDefault();
+      onStart(e.clientX, e.clientY);
+    });
+    document.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+    document.addEventListener('mouseup',   () => onEnd());
+
+    // Touch
+    header.addEventListener('touchstart', e => {
+      if (e.target.closest('select, button')) return;
+      const t = e.touches[0];
+      onStart(t.clientX, t.clientY);
+    }, { passive: true });
+    header.addEventListener('touchmove', e => {
+      const t = e.touches[0];
+      onMove(t.clientX, t.clientY);
+    }, { passive: true });
+    header.addEventListener('touchend', () => onEnd());
+  }
+
+  // ── Panel open / close ─────────────────────────────────────────────────────
+
+  function openPanel() {
+    STATE.panelOpen = true;
+    positionPanel();
+    panel.classList.add('ct-open');
+    // Scroll to bottom after animation
+    setTimeout(() => {
+      const el = document.getElementById('ct-messages');
+      if (el) el.scrollTop = el.scrollHeight;
+    }, 220);
+  }
+
+  function closePanel() {
+    STATE.panelOpen = false;
+    panel.classList.remove('ct-open');
+  }
+
+  // Re-clamp on window resize
+  window.addEventListener('resize', () => {
+    applyBallPos();
+    if (STATE.panelOpen) positionPanel();
+  });
+
+  // ── Chat helpers ───────────────────────────────────────────────────────────
+
   function sessionKey() {
     return `agent:${STATE.selectedAgent}:clawtab-${STATE.channelName}`;
   }
@@ -105,8 +320,8 @@
       new_tab:    '➕ 新标签页',
       close_tab:  '✖️ 关闭标签页',
     };
-    const op   = cmd.payload?.op;
-    const base = actionMap[cmd.action] || `⚙️ ${cmd.action}`;
+    const op     = cmd.payload?.op;
+    const base   = actionMap[cmd.action] || `⚙️ ${cmd.action}`;
     const detail = op ? (opMap[op] || op) : '';
     return detail ? `${base} · ${detail}` : base;
   }
@@ -122,6 +337,7 @@
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
+
   function buildMsgNode(msg) {
     const text = msgText(msg);
     if (!text.trim()) return null;
@@ -176,6 +392,7 @@
   }
 
   // ── Polling ────────────────────────────────────────────────────────────────
+
   function startPolling() {
     if (STATE.polling) return;
     STATE.polling = setInterval(fetchHistory, 3000);
@@ -196,8 +413,7 @@
       if (!res?.ok || !res.messages?.length) return;
 
       const el = document.getElementById('ct-messages');
-      const emptyEl = el?.querySelector('.ct-empty');
-      if (emptyEl) el.innerHTML = '';
+      if (el?.querySelector('.ct-empty')) el.innerHTML = '';
 
       for (const m of res.messages) {
         STATE.lastMsgId = m.id;
@@ -210,6 +426,7 @@
   }
 
   // ── Send ───────────────────────────────────────────────────────────────────
+
   async function sendMessage() {
     const input = document.getElementById('ct-input');
     const text  = input?.value.trim();
@@ -224,8 +441,7 @@
     const localMsg = { id: `local-${Date.now()}`, role: 'user', content: text };
     STATE.messages.push(localMsg);
     const el = document.getElementById('ct-messages');
-    const emptyEl = el?.querySelector('.ct-empty');
-    if (emptyEl) el.innerHTML = '';
+    if (el?.querySelector('.ct-empty')) el.innerHTML = '';
     const node = buildMsgNode(localMsg);
     if (node && el) { el.appendChild(node); el.scrollTop = el.scrollHeight; }
 
@@ -244,26 +460,28 @@
   }
 
   // ── Status ─────────────────────────────────────────────────────────────────
+
   function updateStatus() {
-    const dot  = document.getElementById('ct-status-dot');
-    const text = document.getElementById('ct-status-text');
-    const btn  = document.getElementById('ct-send-btn');
+    const dot     = document.getElementById('ct-status-dot');
+    const txt     = document.getElementById('ct-status-text');
+    const btn     = document.getElementById('ct-send-btn');
     const ballDot = document.getElementById('ct-ball-dot');
 
     if (STATE.wsConnected) {
       dot?.classList.add('connected');
       ballDot?.classList.add('connected');
-      if (text) text.textContent = '已连接';
+      if (txt) txt.textContent = '已连接';
       if (btn) btn.disabled = false;
     } else {
       dot?.classList.remove('connected');
       ballDot?.classList.remove('connected');
-      if (text) text.textContent = '未连接';
+      if (txt) txt.textContent = '未连接';
       if (btn) btn.disabled = true;
     }
   }
 
   // ── Agent selector ─────────────────────────────────────────────────────────
+
   async function loadAgents() {
     const sel = document.getElementById('ct-agent-select');
     if (!sel) return;
@@ -294,19 +512,12 @@
     if (STATE.wsConnected) { fetchHistory(); startPolling(); }
   }
 
-  // ── Panel open / close ─────────────────────────────────────────────────────
-  function openPanel() {
-    STATE.panelOpen = true;
-    document.getElementById('ct-panel')?.classList.add('ct-open');
-  }
-
-  function closePanel() {
-    STATE.panelOpen = false;
-    document.getElementById('ct-panel')?.classList.remove('ct-open');
-  }
-
   // ── Init ───────────────────────────────────────────────────────────────────
+
   async function init() {
+    // Apply initial ball position
+    applyBallPos();
+
     await loadAgents();
 
     try {
@@ -327,10 +538,10 @@
     }
   }
 
-  // ── Events ─────────────────────────────────────────────────────────────────
-  document.getElementById('ct-ball').addEventListener('click', () => {
-    if (STATE.panelOpen) closePanel(); else openPanel();
-  });
+  // ── Wire up events ─────────────────────────────────────────────────────────
+
+  makeBallDraggable();
+  makePanelDraggable();
 
   document.getElementById('ct-close-btn').addEventListener('click', closePanel);
 
@@ -349,14 +560,13 @@
     switchAgent(e.target.value);
   });
 
-  // Listen for status broadcasts from background
+  // Background status broadcasts
   chrome.runtime.onMessage.addListener(msg => {
     if (msg.type !== 'status_update') return;
     const wasConnected = STATE.wsConnected;
     STATE.wsConnected  = msg.wsConnected || false;
     STATE.channelName  = msg.browserId   || STATE.channelName;
 
-    // Show/hide the ball based on connection
     if (STATE.wsConnected) root.classList.remove('ct-hidden');
     else root.classList.add('ct-hidden');
 
