@@ -112,7 +112,18 @@ function drawIcon(state) {
 // SECTION 4: Broadcast to popup
 // ═══════════════════════════════════════════════════════
 
-function broadcast(msg) { chrome.runtime.sendMessage(msg).catch(()=>{}); }
+function broadcast(msg) {
+  // Send to extension pages (popup, sidebar)
+  chrome.runtime.sendMessage(msg).catch(()=>{});
+  // Send to content scripts in all normal tabs
+  chrome.tabs.query({}, tabs => {
+    for (const tab of tabs) {
+      if (tab.id && tab.url && !tab.url.startsWith('chrome')) {
+        chrome.tabs.sendMessage(tab.id, msg).catch(()=>{});
+      }
+    }
+  });
+}
 
 function broadcastStatus() {
   broadcast({
