@@ -77,6 +77,13 @@ const ICON_COLORS = {
 };
 
 function drawIcon(state) {
+  // idle / connected: use the designed PNG logo
+  if (state === 'idle' || state === 'connected' || state === 'done') {
+    chrome.action.setIcon({ path: { 16: 'icons/icon16.png', 48: 'icons/icon48.png', 128: 'icons/icon128.png' } });
+    return;
+  }
+  // transient states (connecting / perceiving / thinking / acting / failed / cancelled):
+  // draw a colour-coded canvas badge so the user can see activity at a glance
   const color = ICON_COLORS[state] || ICON_COLORS.idle;
   const sizes = [16, 48, 128];
   const imageData = {};
@@ -286,6 +293,7 @@ async function wsConnect(url,token,browserId) {
         drawIcon('connected'); broadcastStatus();
         await ensureSession(); await syncLastSeenId();
         startPolling(); reportTabs();
+        sendHandshake();
         // 不在连接时自动截图，截图只在任务执行中更新
       } else {
         const code=msg.payload?.code||'';
@@ -906,6 +914,14 @@ async function sendResult(result) {
   const msg=JSON.stringify({type:'clawtab_result',...result,browserId:S.browserId,ts:Date.now()},null,2);
   try { await wsRequest('chat.send',{sessionKey:S.sessionKey,message:'```json\n'+msg+'\n```',deliver:false},8000); }
   catch(e) { console.warn('[ClawTab] sendResult failed:',e.message); }
+}
+
+async function sendHandshake() {
+  try {
+    const tabs = await chrome.tabs.query({});
+    const text = `🦾 **ClawTab 已连接**\n浏览器：\`${S.browserId}\` · ${tabs.length} 个标签页\n\n向此会话发送指令即可控制浏览器。`;
+    await wsRequest('chat.send', { sessionKey: S.sessionKey, message: text, deliver: true }, 8000);
+  } catch(e) { console.warn('[ClawTab] handshake failed:', e.message); }
 }
 
 // ═══════════════════════════════════════════════════════

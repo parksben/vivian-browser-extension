@@ -175,6 +175,7 @@ function render(data) {
   if (wsConnected) {
     hide('configSection'); hide('pairingSection');
     show('statsBar');
+    hide('settingsWrap');
     // Loop section only when task is running
     const hasTask = loopStatus !== 'idle';
     if (hasTask) { show('loopSection'); renderLoop(loop); }
@@ -184,11 +185,13 @@ function render(data) {
   } else if (pairingPending) {
     hide('configSection'); show('pairingSection');
     hide('statsBar'); hide('loopSection');
+    show('settingsWrap');
     show('brandArea'); hide('disconnectInlineBtn');
     renderPairing(deviceId);
   } else {
     show('configSection'); hide('pairingSection');
     hide('statsBar'); hide('loopSection');
+    show('settingsWrap');
     show('brandArea'); hide('disconnectInlineBtn');
     const tip = document.getElementById('retryTip');
     if (tip) tip.style.display = gaveUp ? '' : 'none';
