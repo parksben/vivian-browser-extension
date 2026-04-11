@@ -151,7 +151,9 @@
       e.stopPropagation();
       const info = captureElement(el);
       exitPickMode();
-      chrome.runtime.sendMessage({ type: 'element_picked', element: info }).catch(() => {});
+      // Send to background only — background will take the screenshot and
+      // broadcast the enriched element_picked message to the sidebar.
+      chrome.runtime.sendMessage({ type: 'element_picked_capture', element: info }).catch(() => {});
     };
 
     _pickHandlers.keydown = (e) => {
@@ -183,27 +185,43 @@
     const classes = Array.from(el.classList).slice(0, 4);
     const text    = (el.textContent || el.value || el.placeholder || el.alt || '').trim().slice(0, 80);
     const selector = computePickSelector(el);
-    return { tag, id, classes, text, selector };
+    // Bounding rect + device pixel ratio — background uses these to crop the screenshot
+    const r = el.getBoundingClientRect();
+    const rect = {
+      x: Math.round(r.x), y: Math.round(r.y),
+      w: Math.round(r.width), h: Math.round(r.height),
+      dpr: window.devicePixelRatio || 1,
+    };
+    return { tag, id, classes, text, selector, rect };
   }
 
   function computePickSelector(el) {
-    try {
-      if (el.id) return '#' + CSS.escape(el.id);
-      const parts = [];
-      let cur = el;
-      for (let i = 0; i < 5 && cur && cur !== document.documentElement; i++) {
-        if (cur.id) { parts.unshift('#' + CSS.escape(cur.id)); break; }
-        let part = cur.tagName.toLowerCase();
-        if (cur.parentElement) {
-          const siblings = Array.from(cur.parentElement.children).filter(c => c.tagName === cur.tagName);
-          if (siblings.length > 1) part += ':nth-of-type(' + (siblings.indexOf(cur) + 1) + ')';
-        }
-        parts.unshift(part);
-        cur = cur.parentElement;
-      }
-      return parts.join(' > ') || el.tagName.toLowerCase();
-    } catch (_) {
-      return el.tagName.toLowerCase();
+    // Try ID-based selector first — only if the ID is unique in the document
+    if (el.id) {
+      const sel = '#' + CSS.escape(el.id);
+      try { if (document.querySelectorAll(sel).length === 1) return sel; } catch (_) {}
     }
+    // Build a full :nth-child path (guaranteed globally unique).
+    // Stop early when we hit a uniquely-IDed ancestor to keep the selector short.
+    const parts = [];
+    let cur = el;
+    while (cur && cur !== document.documentElement) {
+      if (cur !== el && cur.id) {
+        const anc = '#' + CSS.escape(cur.id);
+        try {
+          if (document.querySelectorAll(anc).length === 1) { parts.unshift(anc); break; }
+        } catch (_) {}
+      }
+      const parent = cur.parentElement;
+      const tag = cur.tagName.toLowerCase();
+      if (parent) {
+        const idx = Array.from(parent.children).indexOf(cur) + 1;
+        parts.unshift(`${tag}:nth-child(${idx})`);
+      } else {
+        parts.unshift(tag);
+      }
+      cur = parent;
+    }
+    return parts.join(' > ') || el.tagName.toLowerCase();
   }
 })();

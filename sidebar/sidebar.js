@@ -183,6 +183,7 @@ function renderAttachments() {
     tag.title = attachTooltip(a);
     tag.innerHTML =
       `<button class="sb-attach-tag-focus" title="在页面中高亮">${icon('locate', 10)}</button>` +
+      (a.screenshot ? `<img class="sb-attach-thumb" src="${a.screenshot}" alt="" />` : '') +
       `<span class="sb-attach-tag-label">${esc(formatAttachLabel(a, i))}</span>` +
       `<button class="sb-attach-tag-del" data-idx="${i}" title="移除">×</button>`;
     tag.querySelector('.sb-attach-tag-focus').addEventListener('click', () => {
@@ -360,6 +361,7 @@ function buildMsgNode(msg) {
       tag.title = attachTooltip(a);
       tag.innerHTML =
         `<button class="sb-attach-tag-focus" title="高亮">${icon('locate', 10)}</button>` +
+        (a.screenshot ? `<img class="sb-attach-thumb" src="${a.screenshot}" alt="" />` : '') +
         `<span class="sb-attach-tag-label">${esc(formatAttachLabel(a, i))}</span>`;
       tag.querySelector('.sb-attach-tag-focus').addEventListener('click', () => {
         bg({ type: 'flash_element', selector: a.selector }).catch(() => {});
@@ -460,17 +462,20 @@ async function sendMessage() {
   input.value  = '';
   input.style.height = '';
 
-  // Build message text, appending element reference context
+  // Build message text, appending element reference context as a JSON block.
+  // Background's sendResult uses the same ```json``` convention, so OpenClaw's
+  // agent pipeline already knows how to extract selector + screenshot from it.
   let fullText = text;
   if (STATE.attachments.length > 0) {
-    const lines = STATE.attachments.map((a, i) => {
-      const ref     = formatAttachLabel(a, i);           // '#1:div'
-      const idPart  = a.id ? `#${a.id}` : '';
-      const clsPart = !a.id && a.classes.length ? `.${a.classes[0]}` : '';
-      const txtPart = a.text ? ` "${a.text.slice(0, 50)}"` : '';
-      return `${ref}  ${a.tag}${idPart}${clsPart}${txtPart}  \`${a.selector}\``;
+    const refs = STATE.attachments.map((a, i) => {
+      const ref = { ref: formatAttachLabel(a, i), selector: a.selector, tag: a.tag };
+      if (a.text)       ref.text       = a.text.slice(0, 80);
+      if (a.screenshot) ref.screenshot = a.screenshot;  // base64 JPEG data URL
+      return ref;
     });
-    fullText += '\n\n---\n页面元素引用：\n' + lines.join('\n');
+    fullText += '\n\n```json\n' +
+      JSON.stringify({ type: 'element_refs', refs }, null, 2) +
+      '\n```';
   }
 
   // Clear attachments immediately on send (save copy for bubble)

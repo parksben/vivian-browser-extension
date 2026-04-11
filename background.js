@@ -934,6 +934,24 @@ async function reportTabs() {
   S.tabCount=tabs.length; broadcastStatus();
 }
 
+// Image helpers for element screenshot capture
+function dataURLToBlob(dataURL) {
+  const [head, b64] = dataURL.split(',');
+  const mime = head.match(/:(.*?);/)[1];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+function blobToDataURL(blob) {
+  return blob.arrayBuffer().then(ab => {
+    const bytes = new Uint8Array(ab);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return `data:${blob.type};base64,${btoa(bin)}`;
+  });
+}
+
 async function sendResult(result) {
   const msg=JSON.stringify({type:'clawtab_result',...result,browserId:S.browserId,ts:Date.now()},null,2);
   try { await wsRequest('chat.send',{sessionKey:S.sessionKey,message:'```json\n'+msg+'\n```',deliver:false},8000); }
@@ -1108,6 +1126,70 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
               args: [msg.selector],
             }).catch(()=>{});
           }
+          sendResponse({ok:true});
+        })(); return true;
+
+      case 'element_picked_capture':
+        // Content script sends this instead of broadcasting element_picked directly
+        // so that background can take a screenshot before forwarding to the sidebar.
+        (async()=>{
+          const elem = msg.element || {};
+          const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+          let screenshot = null;
+
+          if (tab?.id && elem.selector) {
+            try {
+              // Scroll element into view and re-read bounding rect + dpr atomically
+              const [res] = await chrome.scripting.executeScript({
+                target: {tabId: tab.id}, world: 'MAIN',
+                func: (sel) => {
+                  const el = document.querySelector(sel);
+                  if (!el) return null;
+                  el.scrollIntoView({block:'center',behavior:'instant'});
+                  const r = el.getBoundingClientRect();
+                  return {x:r.x, y:r.y, w:r.width, h:r.height, dpr:window.devicePixelRatio||1};
+                },
+                args: [elem.selector],
+              });
+              const rect = res?.result;
+
+              if (rect && rect.w > 0 && rect.h > 0) {
+                await new Promise(r=>setTimeout(r,120)); // let scroll settle
+                const dataUrl = await chrome.tabs.captureVisibleTab(
+                  tab.windowId, {format:'jpeg',quality:80}
+                );
+                const dpr = rect.dpr;
+                const fullImg = await createImageBitmap(dataURLToBlob(dataUrl));
+                // Convert CSS pixels → image pixels, clamped to image bounds
+                const sx = Math.max(0, Math.round(rect.x * dpr));
+                const sy = Math.max(0, Math.round(rect.y * dpr));
+                const sw = Math.min(Math.round(rect.w * dpr), fullImg.width  - sx);
+                const sh = Math.min(Math.round(rect.h * dpr), fullImg.height - sy);
+                if (sw > 0 && sh > 0) {
+                  // Limit output to 800 px on longest side
+                  const MAX = 800;
+                  let dw = sw, dh = sh;
+                  if (Math.max(dw, dh) > MAX) {
+                    if (dw >= dh) { dh = Math.round(dh * MAX / dw); dw = MAX; }
+                    else          { dw = Math.round(dw * MAX / dh); dh = MAX; }
+                  }
+                  const canvas = new OffscreenCanvas(dw, dh);
+                  canvas.getContext('2d').drawImage(fullImg, sx, sy, sw, sh, 0, 0, dw, dh);
+                  const outBlob = await canvas.convertToBlob({type:'image/jpeg',quality:0.65});
+                  screenshot = await blobToDataURL(outBlob);
+                }
+                fullImg.close();
+              }
+            } catch(e) {
+              console.warn('[ClawTab] element screenshot failed:', e.message);
+            }
+          }
+
+          // Broadcast enriched element_picked to sidebar
+          chrome.runtime.sendMessage({
+            type: 'element_picked',
+            element: {...elem, screenshot},
+          }).catch(()=>{});
           sendResponse({ok:true});
         })(); return true;
 
