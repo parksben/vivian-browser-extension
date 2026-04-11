@@ -390,3 +390,61 @@ body {
   padding: 7px 11px;
   line-height: 1.5;
 }
+
+/* ─── Markdown content inside bubbles ─── */
+.sb-bubble.markdown { white-space: normal; }
+
+.sb-bubble.markdown p        { margin: 0 0 .5em; }
+.sb-bubble.markdown p:last-child { margin-bottom: 0; }
+
+.sb-bubble.markdown h1,
+.sb-bubble.markdown h2,
+.sb-bubble.markdown h3,
+.sb-bubble.markdown h4 { font-weight: 600; margin: .6em 0 .25em; line-height: 1.3; }
+.sb-bubble.markdown h1 { font-size: 15px; }
+.sb-bubble.markdown h2 { font-size: 14px; }
+.sb-bubble.markdown h3 { font-size: 13px; }
+.sb-bubble.markdown h4 { font-size: 12px; }
+
+.sb-bubble.markdown ul,
+.sb-bubble.markdown ol { margin: .3em 0 .5em 1.2em; padding: 0; }
+.sb-bubble.markdown li  { margin: .15em 0; }
+
+.sb-bubble.markdown pre {
+  background: rgba(0,0,0,.06);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  margin: .4em 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.sb-msg.user .sb-bubble.markdown pre  { background: rgba(255,255,255,.15); }
+.sb-bubble.markdown pre code           { background: none; padding: 0; font-size: inherit; }
+
+.sb-bubble.markdown blockquote {
+  border-left: 3px solid #c4b5fd;
+  padding: .2em .6em;
+  margin: .3em 0;
+  color: #64748b;
+  font-style: italic;
+}
+.sb-msg.user .sb-bubble.markdown blockquote {
+  border-left-color: rgba(255,255,255,.5);
+  color: rgba(255,255,255,.85);
+}
+
+.sb-bubble.markdown table      { border-collapse: collapse; margin: .4em 0; font-size: 11px; max-width: 100%; }
+.sb-bubble.markdown th,
+.sb-bubble.markdown td         { border: 1px solid #e2e8f0; padding: 4px 8px; text-align: left; }
+.sb-bubble.markdown th         { background: #f8fafc; font-weight: 600; }
+.sb-msg.user .sb-bubble.markdown th  { background: rgba(255,255,255,.15); }
+.sb-msg.user .sb-bubble.markdown th,
+.sb-msg.user .sb-bubble.markdown td  { border-color: rgba(255,255,255,.2); }
+
+.sb-bubble.markdown hr { border: none; border-top: 1px solid #e2e8f0; margin: .5em 0; }
+
+.sb-bubble.markdown a { color: #6366f1; text-decoration: underline; }
+.sb-msg.user .sb-bubble.markdown a { color: rgba(255,255,255,.9); }
+
+.sb-bubble.markdown img { max-width: 100%; border-radius: 4px; }

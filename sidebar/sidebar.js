@@ -159,12 +159,21 @@ function summariseToolCall(tc) {
 const esc = s => String(s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-/** Very basic markdown → HTML (bold, inline code, line breaks) */
+marked.setOptions({ gfm: true, breaks: true });
+
+function sanitizeHtml(html) {
+  return html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<iframe\b[\s\S]*?>/gi, '')
+    .replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '')
+    .replace(/href\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, 'href="#"');
+}
+
+/** Full GFM markdown → sanitized HTML via marked */
 function formatText(raw) {
-  return esc(raw)
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-    .replace(/\n/g, '<br>');
+  if (!raw) return '';
+  try { return sanitizeHtml(marked.parse(String(raw))); }
+  catch (_) { return esc(raw).replace(/\n/g, '<br>'); }
 }
 
 // ── Thinking indicator ────────────────────────────────────────────────────
@@ -410,7 +419,7 @@ function buildMsgNode(msg) {
 
   if (cleaned) {
     const bubble = document.createElement('div');
-    bubble.className = 'sb-bubble';
+    bubble.className = 'sb-bubble markdown';
     bubble.innerHTML = formatText(cleaned);
     body.appendChild(bubble);
   }
