@@ -51,8 +51,8 @@ const I18N = {
     taskFailed:   'Failed',
     taskCancelled:'Cancelled',
     // Chat sidebar
-    openChat: '与 OpenClaw 聊天',
-    hideChat: '隐藏聊天窗口',
+    openChat: 'Chat with OpenClaw',
+    hideChat: 'Hide Chat',
   },
   zh: {
     config:          '连接配置',
