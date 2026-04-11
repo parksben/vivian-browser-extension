@@ -1263,7 +1263,7 @@ async function init() {
   drawIcon('idle');
   S.deviceIdentity=await loadOrCreateDevice();
   const data=await chrome.storage.local.get(['gatewayUrl','gatewayToken','browserName']);
-  if(data.gatewayUrl&&data.gatewayToken) await wsConnect(data.gatewayUrl,data.gatewayToken,data.browserName||'browser');
+  if(data.gatewayUrl&&data.gatewayToken&&!S.ws&&!S.wsConnected) await wsConnect(data.gatewayUrl,data.gatewayToken,data.browserName||'browser');
 }
 
 init();
