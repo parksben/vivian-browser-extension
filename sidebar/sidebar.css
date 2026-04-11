@@ -37,10 +37,6 @@ body {
   gap: 8px;
 }
 
-.sb-brand { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
-.sb-logo  { width: 16px; height: 16px; border-radius: 3px; }
-.sb-title { font-size: 14px; font-weight: 700; color: #1e293b; letter-spacing: -.3px; }
-
 /* Agent selector */
 .sb-agent-select {
   background: #f1f5f9;
