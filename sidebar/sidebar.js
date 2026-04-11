@@ -461,8 +461,9 @@ async function sendMessage() {
     if (!res?.ok) {
       // Send failed — show inline error, don't enter waiting state
       const errMsg = res?.error || '未知错误，请检查连接后重试';
-      console.warn('[Sidebar] send failed:', errMsg);
-      appendErrorNode(errMsg);
+      const detail = res?.code ? ` [${res.code}]` : '';
+      console.warn('[Sidebar] send failed:', errMsg, res?.code || '');
+      appendErrorNode(errMsg + detail);
       return; // finally block will re-enable the send button
     }
     // Show thinking indicator and lock send until agent replies

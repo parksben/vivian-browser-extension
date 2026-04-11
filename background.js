@@ -238,11 +238,12 @@ function resolvePending(id,msg) {
   clearTimeout(p.timer); pendingReqs.delete(id);
   if(msg.ok) p.resolve(msg.payload||{});
   else {
-    // Surface full payload so failures are diagnosable in SW console
+    // Surface full payload so failures are diagnosable in SW console and sidebar
+    const rawPayload = msg.payload != null ? JSON.stringify(msg.payload) : 'null';
     const errMsg  = msg.payload?.message || msg.payload?.error ||
-                    (typeof msg.payload==='string' ? msg.payload : null) || 'failed';
+                    (typeof msg.payload==='string' ? msg.payload : null) || rawPayload || 'failed';
     const errCode = msg.payload?.code || msg.payload?.errorCode || '';
-    console.warn('[ClawTab] wsReq failed:', msg.id?.split('-')[0], '| msg:', errMsg, '| code:', errCode, '| payload:', JSON.stringify(msg.payload));
+    console.warn('[ClawTab] wsReq failed:', msg.id?.split('-')[0], '| msg:', errMsg, '| code:', errCode, '| payload:', rawPayload);
     p.reject(Object.assign(new Error(errMsg), {code: errCode}));
   }
 }
@@ -1012,7 +1013,7 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
             sendResponse({ok:true});
           } catch(e) {
             console.error('[ClawTab] sidebar_ensure_and_send failed:', e.message, '| code:', e.code);
-            sendResponse({ok:false, error:e.message});
+            sendResponse({ok:false, error:e.message, code: e.code||''});
           }
         })();
         return true;
