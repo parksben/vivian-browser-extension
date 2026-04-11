@@ -229,7 +229,6 @@ function wsRequest(method, params, timeoutMs=10000) {
     const id = method.replace(/\./g,'_')+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6);
     const timer = setTimeout(()=>{ pendingReqs.delete(id); reject(new Error(`Timeout: ${method}`)); }, timeoutMs);
     pendingReqs.set(id,{resolve,reject,timer});
-    console.log('[ClawTab][WS OUT]', JSON.stringify({type:'req',id,method,params}).slice(0,300));
     wsSend({type:'req',id,method,params});
   });
 }
@@ -239,12 +238,14 @@ function resolvePending(id,msg) {
   clearTimeout(p.timer); pendingReqs.delete(id);
   if(msg.ok) p.resolve(msg.payload||{});
   else {
-    // Surface full payload so failures are diagnosable in SW console and sidebar
-    const rawPayload = msg.payload != null ? JSON.stringify(msg.payload) : 'null';
-    const errMsg  = msg.payload?.message || msg.payload?.error ||
-                    (typeof msg.payload==='string' ? msg.payload : null) || rawPayload || 'failed';
-    const errCode = msg.payload?.code || msg.payload?.errorCode || '';
-    console.warn('[ClawTab] wsReq failed:', msg.id?.split('-')[0], '| msg:', errMsg, '| code:', errCode, '| payload:', rawPayload);
+    // Server may return errors in msg.error OR msg.payload
+    const errObj  = msg.error ?? msg.payload;
+    const errMsg  = (typeof errObj==='object' && errObj!==null)
+                    ? (errObj.message || errObj.error || JSON.stringify(errObj))
+                    : (typeof errObj==='string' ? errObj : null) || 'failed';
+    const errCode = (typeof errObj==='object' && errObj!==null)
+                    ? (errObj.code || errObj.errorCode || '') : '';
+    console.warn('[ClawTab] wsReq failed:', msg.id?.split('-')[0], '| msg:', errMsg, '| code:', errCode);
     p.reject(Object.assign(new Error(errMsg), {code: errCode}));
   }
 }
@@ -277,11 +278,6 @@ async function wsConnect(url,token,browserId) {
 
   S.ws.onmessage = async (ev) => {
     let msg; try{msg=JSON.parse(ev.data);}catch{return;}
-    // ── DEBUG: log every server message (remove once diagnosed) ──────────
-    if (msg.type==='res' && msg.id!==S.wsPendingConnectId) {
-      console.log('[ClawTab][WS IN]', JSON.stringify(msg).slice(0,400));
-    }
-    // ─────────────────────────────────────────────────────────────────────
     // challenge
     if (msg.type==='event'&&msg.event==='connect.challenge') {
       S.wsPendingNonce=msg.payload?.nonce||null;
