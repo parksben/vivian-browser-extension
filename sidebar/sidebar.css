@@ -30,7 +30,6 @@ body {
 .sb-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 10px 14px;
   background: #fff;
   border-bottom: 1px solid #e2e8f0;
@@ -41,23 +40,6 @@ body {
 .sb-brand { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
 .sb-logo  { width: 16px; height: 16px; border-radius: 3px; }
 .sb-title { font-size: 14px; font-weight: 700; color: #1e293b; letter-spacing: -.3px; }
-
-/* Session key in header */
-.sb-session { display: flex; align-items: center; min-width: 0; flex: 1; }
-.sb-session-key {
-  font-size: 11px;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-  color: #64748b;
-  background: #f1f5f9;
-  border-radius: 5px;
-  padding: 2px 7px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 180px;
-}
-
-.sb-header-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 
 /* Agent selector */
 .sb-agent-select {
@@ -75,7 +57,7 @@ body {
 }
 .sb-agent-select:focus { border-color: #6366f1; }
 
-/* Status badge */
+/* Status badge pushed to far right */
 .sb-status-badge {
   display: flex;
   align-items: center;
@@ -86,6 +68,7 @@ body {
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
+  margin-left: auto;
 }
 .sb-status-dot {
   width: 7px; height: 7px;

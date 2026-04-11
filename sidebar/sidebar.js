@@ -485,12 +485,7 @@ async function sendMessage() {
   }
 }
 
-// ── Status & session display ────────────────────────────────────────────────
-
-function updateSessionDisplay() {
-  const el = document.getElementById('sessionKeyDisplay');
-  if (el) el.textContent = STATE.channelName ? sessionKey() : '—';
-}
+// ── Status ─────────────────────────────────────────────────────────────────
 
 function updateStatus() {
   const dot       = document.getElementById('statusDot');
@@ -555,7 +550,6 @@ function switchAgent(newAgent) {
   clearTimeout(STATE.waitingTimer);
   hideThinking();
   stopPolling();
-  updateSessionDisplay();
   updateSendBtn();
   renderAll();
   if (STATE.wsConnected) {
@@ -590,7 +584,6 @@ async function init() {
     if (tab?.id) STATE.activeTabId = tab.id;
   } catch (_) {}
 
-  updateSessionDisplay();
   updateStatus();
   renderAll();
 
@@ -677,8 +670,7 @@ chrome.runtime.onMessage.addListener(msg => {
     STATE.wsConnected   = msg.wsConnected  || false;
     STATE.reconnecting  = msg.reconnecting || false;
     STATE.channelName   = msg.browserId    || STATE.channelName;
-    updateSessionDisplay();
-    updateStatus();
+      updateStatus();
 
     if (!wasConnected && STATE.wsConnected) {
       STATE.messages  = [];
