@@ -205,7 +205,7 @@ async function loadOrCreateDevice() {
 
 async function signConnect(dev, {token,role,scopes,signedAtMs,nonce}) {
   const v=nonce?'v2':'v1';
-  const parts=[v,dev.id,'clawtab','operator',role,scopes.join(','),String(signedAtMs),token||''];
+  const parts=[v,dev.id,'webchat','webchat',role,scopes.join(','),String(signedAtMs),token||''];
   if(nonce) parts.push(nonce);
   const sig = await crypto.subtle.sign('Ed25519',dev.keyPair.privateKey,new TextEncoder().encode(parts.join('|')));
   return { id:dev.id, publicKey:dev.publicKeyRaw, signature:b64url(sig), signedAt:signedAtMs, nonce };
@@ -275,7 +275,7 @@ async function wsConnect(url,token,browserId) {
     const stored=await chrome.storage.local.get(['deviceToken']);
     const params={
       minProtocol:3,maxProtocol:3,
-      client:{id:'clawtab',version:'1.71.3',platform:'browser_extension',mode:'operator'},
+      client:{id:'webchat',version:'1.71.3',platform:'browser_extension',mode:'webchat'},
       role:'operator',scopes:SCOPES,caps:[],commands:[],permissions:{},
       auth:stored.deviceToken?{token,deviceToken:stored.deviceToken}:{token},
       locale:'zh-CN',
@@ -299,7 +299,7 @@ async function wsConnect(url,token,browserId) {
         console.log('[ClawTab] sending signed connect | devId:', S.deviceIdentity.id?.slice(0,8));
         wsSend({type:'req',id:S.wsPendingConnectId,method:'connect',params:{
           minProtocol:3,maxProtocol:3,
-          client:{id:'clawtab',version:'1.71.3',platform:'browser_extension',mode:'operator'},
+          client:{id:'webchat',version:'1.71.3',platform:'browser_extension',mode:'webchat'},
           role,scopes,caps:[],commands:[],permissions:{},
           auth:stored.deviceToken?{token:S.wsToken,deviceToken:stored.deviceToken}:{token:S.wsToken},
           device,locale:'zh-CN',
