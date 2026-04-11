@@ -251,6 +251,9 @@ function resolvePending(id,msg) {
 }
 
 async function wsConnect(url,token,browserId) {
+  // 幂等保护：相同参数且正在连接中，直接返回，不打断
+  if (S.ws && S.ws.readyState === WebSocket.CONNECTING &&
+      S.wsUrl === url && S.wsToken === token) return;
   wsDisconnect(); // 静默关闭旧连接，不触发 onclose 回调
   S.wsUrl=url; S.wsToken=token; S.browserId=browserId;
   S.sessionKey=`agent:main:clawtab-${browserId}`;
