@@ -1104,24 +1104,43 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
               func: (sel) => {
                 const el = document.querySelector(sel);
                 if (!el) return;
-                const styleId = '__ct_flash_style__';
+                el.scrollIntoView({block:'center', behavior:'instant'});
+                const r = el.getBoundingClientRect();
+                // Remove any existing overlay
+                const old = document.getElementById('__ct_flash_ov__');
+                if (old) old.remove();
+                // Inject keyframe style once
+                const styleId = '__ct_flash_kf__';
                 if (!document.getElementById(styleId)) {
                   const s = document.createElement('style');
                   s.id = styleId;
                   s.textContent =
-                    '@keyframes __ct_flash {' +
-                    '0%,100%{outline:3px solid rgba(99,102,241,0);box-shadow:0 0 0 0 rgba(99,102,241,0)}' +
-                    '25%{outline:3px solid #6366f1;box-shadow:0 0 0 8px rgba(99,102,241,0.25)}' +
-                    '60%{outline:3px solid #6366f1;box-shadow:0 0 0 3px rgba(99,102,241,0.12)}' +
-                    '}' +
-                    '.__ct_flashing{animation:__ct_flash 0.9s ease 3;outline-offset:3px;}';
+                    '@keyframes __ct_flash_ov {' +
+                    '0%{opacity:0;transform:scale(1.06)}' +
+                    '15%{opacity:1;transform:scale(1)}' +
+                    '70%{opacity:1}' +
+                    '100%{opacity:0}' +
+                    '}';
                   document.head.appendChild(s);
                 }
-                el.scrollIntoView({block:'center',behavior:'smooth'});
-                el.classList.remove('__ct_flashing');
-                void el.offsetWidth; // restart animation
-                el.classList.add('__ct_flashing');
-                setTimeout(()=>el.classList.remove('__ct_flashing'), 2800);
+                const ov = document.createElement('div');
+                ov.id = '__ct_flash_ov__';
+                ov.style.cssText = [
+                  'position:fixed',
+                  'pointer-events:none',
+                  'z-index:2147483647',
+                  'left:'  + Math.round(r.left)   + 'px',
+                  'top:'   + Math.round(r.top)    + 'px',
+                  'width:' + Math.round(r.width)  + 'px',
+                  'height:'+ Math.round(r.height) + 'px',
+                  'border:2px solid #6366f1',
+                  'background:rgba(99,102,241,0.18)',
+                  'border-radius:4px',
+                  'box-shadow:0 0 0 3px rgba(99,102,241,0.25)',
+                  'animation:__ct_flash_ov 2.2s ease forwards',
+                ].join(';');
+                document.documentElement.appendChild(ov);
+                setTimeout(() => ov.remove(), 2300);
               },
               args: [msg.selector],
             }).catch(()=>{});
