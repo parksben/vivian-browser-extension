@@ -409,7 +409,7 @@ function wsScheduleReconnect() {
 // ═══════════════════════════════════════════════════════
 
 async function ensureSession() {
-  try { await wsRequest('sessions.create',{channel:'webchat',sessionKey:S.sessionKey},8000); S.sessionExists=true; }
+  try { await wsRequest('sessions.create',{key:S.sessionKey,agentId:'main'},8000); S.sessionExists=true; }
   catch(e) {
     if(e.code==='SESSION_EXISTS'||e.message?.includes('exists')) { S.sessionExists=true; return; }
     console.warn('[ClawTab] ensureSession failed (non-fatal):', e.message, '| code:', e.code);
@@ -441,8 +441,7 @@ async function doPoll() {
   if (!S.wsConnected||S.pollPaused) return;
   try {
     const res=await wsRequest('chat.history',{
-      sessionKey:S.sessionKey,limit:10,
-      ...(S.lastSeenMsgId?{after:S.lastSeenMsgId}:{}),
+      sessionKey:S.sessionKey,limit:20,
     },8000);
     S.pollBackoff=POLL_IDLE_MS;
     for (const msg of (res.messages||[])) {
@@ -973,7 +972,7 @@ function blobToDataURL(blob) {
 
 async function sendResult(result) {
   const msg=JSON.stringify({type:'clawtab_result',...result,browserId:S.browserId,ts:Date.now()},null,2);
-  try { await wsRequest('chat.send',{sessionKey:S.sessionKey,message:'```json\n'+msg+'\n```',deliver:false},8000); }
+  try { await wsRequest('chat.send',{sessionKey:S.sessionKey,message:'```json\n'+msg+'\n```',deliver:false,idempotencyKey:crypto.randomUUID()},8000); }
   catch(e) { console.warn('[ClawTab] sendResult failed:',e.message); }
 }
 
@@ -981,7 +980,7 @@ async function sendHandshake() {
   try {
     const tabs = await chrome.tabs.query({});
     const text = `🦾 **ClawTab 已连接**\n浏览器：\`${S.browserId}\` · ${tabs.length} 个标签页\n\n向此会话发送指令即可控制浏览器。`;
-    await wsRequest('chat.send', { sessionKey: S.sessionKey, message: text, deliver: true }, 8000);
+    await wsRequest('chat.send', { sessionKey: S.sessionKey, message: text, deliver: true, idempotencyKey: crypto.randomUUID() }, 8000);
   } catch(e) { console.warn('[ClawTab] handshake failed:', e.message); }
 }
 
@@ -1027,7 +1026,6 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
             const res = await wsRequest('chat.history',{
               sessionKey: msg.sessionKey,
               limit: 50,
-              ...(msg.after ? {after: msg.after} : {}),
             }, 10000);
             sendResponse({ok:true, messages: res.messages||[]});
           } catch(e) { sendResponse({ok:false, error:e.message, messages:[]}); }
@@ -1047,7 +1045,7 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
             // deliver:true is required so the agent receives a push notification
             // and picks up the user's message immediately.  deliver:false is used
             // only for sendResult (browser-side ACK) which the agent polls for.
-            await wsRequest('chat.send',{sessionKey:msg.sessionKey,message:msg.message,deliver:true},10000);
+            await wsRequest('chat.send',{sessionKey:msg.sessionKey,message:msg.message,deliver:true,idempotencyKey:crypto.randomUUID()},10000);
             sendResponse({ok:true});
           } catch(e) {
             console.error('[ClawTab] sidebar_ensure_and_send failed:', e.message, '| code:', e.code);
