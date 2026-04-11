@@ -1045,7 +1045,27 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
       case 'enter_pick_mode':
         (async()=>{
           const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
-          if(tab?.id) chrome.tabs.sendMessage(tab.id,{type:'enter_pick_mode'}).catch(()=>{});
+          if (!tab?.id) { sendResponse({ok:true}); return; }
+          try {
+            // Fast path: content script already running
+            await chrome.tabs.sendMessage(tab.id, {type:'enter_pick_mode'});
+          } catch(_) {
+            // Content script not running (tab predates this extension load, or
+            // extension was reloaded).  Clear the init-guard, re-inject, retry.
+            try {
+              await chrome.scripting.executeScript({
+                target: {tabId: tab.id},
+                func: () => { delete window.__vivianContentLoaded; },
+              });
+              await chrome.scripting.executeScript({
+                target: {tabId: tab.id},
+                files: ['content/content.js'],
+              });
+              await chrome.tabs.sendMessage(tab.id, {type:'enter_pick_mode'});
+            } catch(e2) {
+              console.warn('[ClawTab] enter_pick_mode inject+retry failed:', e2.message);
+            }
+          }
           sendResponse({ok:true});
         })(); return true;
 
