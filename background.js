@@ -237,7 +237,14 @@ function resolvePending(id,msg) {
   const p=pendingReqs.get(id); if(!p) return;
   clearTimeout(p.timer); pendingReqs.delete(id);
   if(msg.ok) p.resolve(msg.payload||{});
-  else p.reject(Object.assign(new Error(msg.payload?.message||'failed'),{code:msg.payload?.code}));
+  else {
+    // Surface full payload so failures are diagnosable in SW console
+    const errMsg  = msg.payload?.message || msg.payload?.error ||
+                    (typeof msg.payload==='string' ? msg.payload : null) || 'failed';
+    const errCode = msg.payload?.code || msg.payload?.errorCode || '';
+    console.warn('[ClawTab] wsReq failed:', msg.id?.split('-')[0], '| msg:', errMsg, '| code:', errCode, '| payload:', JSON.stringify(msg.payload));
+    p.reject(Object.assign(new Error(errMsg), {code: errCode}));
+  }
 }
 
 async function wsConnect(url,token,browserId) {
@@ -998,13 +1005,11 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
             return;
           }
           try {
-            // Create session idempotently; only warn on unexpected errors
-            await wsRequest('sessions.create',{channel:'webchat',sessionKey:msg.sessionKey},8000)
-              .catch(e => {
-                const isExists = e.code?.includes('EXIST') || e.message?.toLowerCase().includes('exist');
-                if (!isExists) console.warn('[ClawTab] sidebar sessions.create warning:', e.message, '| code:', e.code);
-              });
-            await wsRequest('chat.send',{sessionKey:msg.sessionKey,message:msg.message,deliver:true},10000);
+            // Session is created by the agent — do not attempt sessions.create here,
+            // it always fails with a permissions error for agent-owned sessions.
+            // deliver:false mirrors sendResult(); the agent subscription picks up
+            // new messages without needing a push-deliver.
+            await wsRequest('chat.send',{sessionKey:msg.sessionKey,message:msg.message,deliver:false},10000);
             sendResponse({ok:true});
           } catch(e) {
             console.error('[ClawTab] sidebar_ensure_and_send failed:', e.message, '| code:', e.code);
