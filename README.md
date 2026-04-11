@@ -4,17 +4,19 @@
 
 ## Features
 
-- 🔌 **Connect to any OpenClaw Gateway** — local or remote, via WebSocket
-- 💬 **Persistent sidebar chat** — a side panel opens automatically after connecting; chat with any agent directly from your browser
-- 🤖 **Multi-agent selector** — switch between agents in the sidebar; each agent has its own independent session and chat history
-- 👁️ **Tab awareness** — list all open tabs, read page content, and capture screenshots
-- ⚡ **Task execution engine** — agents send multi-step task plans; ClawTab executes and reports progress in real time
-- 🔒 **Exclusive agent lock** — only one agent can occupy the browser at a time; concurrent requests are rejected with a clear reason
-- 🏷️ **Channel identity** — set a channel name so the Gateway creates a dedicated `webchat` session visible in the Web UI
-- 🤝 **Auto handshake** — ClawTab sends a greeting message on connect so the session appears immediately in the OpenClaw Web UI
-- 💾 **Auto-save** — URL, token, and channel name are remembered across sessions
-- 📌 **Fixed extension ID** — pinned via `manifest.json` key, survives reinstalls
-- 🌐 **Bilingual UI** — switch between Chinese / English in the popup
+- **Connect to any OpenClaw Gateway** — local or remote, via WebSocket
+- **Persistent sidebar chat** — a Side Panel opens automatically after connecting; chat with any agent directly from your browser
+- **Multi-agent selector** — switch between agents in the sidebar; each agent has its own independent session and chat history
+- **Full Markdown rendering** — agent replies render GFM markdown (headings, lists, code blocks, tables, etc.) via bundled marked.js
+- **Page element picker** — click the crosshair button in the sidebar to pick DOM elements on the current page and attach them to your message
+- **Tab awareness** — list all open tabs, read page content, and capture screenshots
+- **Task execution engine** — agents issue `perceive` / `act` commands; ClawTab executes and reports results in real time
+- **Exclusive agent lock** — only one agent can occupy the browser at a time; concurrent requests are rejected with a clear reason
+- **Channel identity** — set a channel name so the Gateway creates a dedicated session visible in the Web UI
+- **Auto handshake** — ClawTab sends a greeting on connect so the session appears immediately in the OpenClaw Web UI
+- **Auto-save** — URL, token, and channel name are remembered across sessions
+- **Fixed extension ID** — pinned via `manifest.json` key, survives reinstalls
+- **Bilingual UI** — switch between Chinese / English in the popup
 
 ## Installation
 
@@ -51,7 +53,7 @@ Add ClawTab's origin to `gateway.controlUi.allowedOrigins`:
 }
 ```
 
-> ⚠️ **Restart required:** After modifying `allowedOrigins` or `gateway.auth`, you must **fully restart** the OpenClaw Gateway. A hot-reload (SIGUSR1) is **not** sufficient for these settings.
+> **Restart required:** After modifying `allowedOrigins` or `gateway.auth`, you must **fully restart** the OpenClaw Gateway. A hot-reload (SIGUSR1) is **not** sufficient for these settings.
 >
 > ```bash
 > systemctl restart openclaw-gateway
@@ -61,62 +63,69 @@ Add ClawTab's origin to `gateway.controlUi.allowedOrigins`:
 
 See [AGENT_PROTOCOL.md](./AGENT_PROTOCOL.md) for the full specification.
 
-### Quick start — standard pre-flight sequence
+The primary agent interface is a **chat session** (`agent:{id}:clawtab-{channel}`) where the agent exchanges natural-language messages with ClawTab. To trigger browser automation, the agent embeds a `clawtab_cmd` JSON block in a chat message:
 
-Before automation, the agent should:
-
-**0. Check browser status**
-```json
-{ "type": "browser_check", "checkId": "chk-001", "agentId": "main" }
-```
-Returns: browser name, authorization status, `busy` flag (whether another agent is currently occupying it), and a snapshot of all open tabs (with screenshot of the active tab).
-
-**1. If `busy: true` → abort**
-The browser is occupied by another agent. The response includes `occupiedByAgent` with the agent ID currently in control.
-
-**2. Send task plan**
 ```json
 {
-  "type": "task_plan",
-  "taskId": "task-001",
-  "taskName": "Collect page title",
-  "agentId": "main",
-  "steps": [
-    { "type": "execute_js", "label": "Get title", "tabId": 1, "code": "document.title" },
-    { "type": "screenshot", "label": "Capture", "tabId": 1 }
-  ]
+  "type": "clawtab_cmd",
+  "cmdId": "cmd-001",
+  "action": "perceive",
+  "agentId": "main"
 }
 ```
 
-**3. Receive results**
-ClawTab pushes `task_step_result` after each step, and `task_result` when done.
+ClawTab executes the command and replies in the same session with a `clawtab_result` JSON block (hidden from the sidebar UI, visible only to the agent).
+
+### Actions
+
+| action | description |
+|---|---|
+| `perceive` | Capture the active tab's DOM structure + screenshot |
+| `act` | Execute a single browser operation (see ops below) |
+| `task_start` | Signal the start of a multi-step task (updates the toolbar icon) |
+| `task_done` | Signal task completion |
+| `task_fail` | Signal task failure |
+| `cancel` | Abort any in-progress command |
+
+### `act` operations
+
+The `act` action accepts a `payload` with an `op` field:
+
+| op | key fields | description |
+|---|---|---|
+| `navigate` | `value` (URL) | Navigate the active tab |
+| `click` | `target` (CSS selector or text) | Click an element |
+| `fill` | `target`, `value` | Type into an input field |
+| `clear` | `target` | Clear an input field |
+| `press` | `value` (key name) | Dispatch a keyboard event |
+| `select` | `target`, `value` | Choose a `<select>` option |
+| `hover` | `target` | Mouse over an element |
+| `scroll` | `target` (x), `value` (y) | Scroll to absolute position |
+| `scroll_by` | `target` (dx), `value` (dy) | Scroll by relative offset |
+| `scroll_to_element` | `target` | Scroll element into view |
+| `wait` | `value` (ms) | Pause execution |
+| `wait_for` | `target` | Wait for element to appear |
+| `get_text` | `target` | Read element's text content |
+| `get_attr` | `target`, `value` (attr name) | Read an element attribute |
+| `eval` | `value` (JS code) | Execute arbitrary JavaScript |
+| `screenshot_element` | `target` | Capture a single element as JPEG |
+| `new_tab` | `value` (URL, optional) | Open a new tab |
+| `close_tab` | `target` (tabId) | Close a tab |
+| `switch_tab` | `target` (tabId) | Switch to a tab |
+| `go_back` | — | Browser back |
+| `go_forward` | — | Browser forward |
+
+Optional on every `act`: `tabId`, `captureAfter` (screenshot after op), `waitAfter` (ms delay).
 
 ### Exclusive lock
 
-- Only **one agent** can run a task at a time
-- If another agent sends `task_plan` while the browser is occupied, it immediately receives:
-  ```
-  Browser is currently occupied by agent "main". Task "xxx" is in progress. Please try again later.
-  ```
-- The lock is released automatically when the task completes, fails, or is cancelled
-- The user can also cancel the current task from the ClawTab popup
-
-### Supported step types
-
-| type | fields | description |
-|---|---|---|
-| `navigate` | `tabId`, `url` | Navigate a tab |
-| `execute_js` | `tabId`, `code` | Run JS, returns result |
-| `screenshot` | `tabId` | Capture JPEG screenshot |
-| `get_content` | `tabId` | Get page text + HTML |
-| `wait` | `ms` | Pause |
-
-Optional per step: `label`, `timeout` (ms), `abortOnError: false`
+- Only **one agent** can run commands at a time
+- If the browser is busy, the response is `{ ok: false, errorCode: "BUSY" }` with the current status
+- The lock releases automatically when the command completes, fails, or is cancelled
 
 ## Privacy & Security
 
 - ClawTab only connects to the Gateway URL you explicitly configure
-- Agent access is restricted to the agents you select in the popup
 - No data is sent to any third-party services
 
 ## License
@@ -131,17 +140,19 @@ MIT
 
 ## 功能特性
 
-- 🔌 **连接任意 OpenClaw Gateway** — 本地或远程，通过 WebSocket
-- 💬 **常驻侧边栏聊天** — 连接后自动打开侧边栏，直接在浏览器中与 Agent 对话
-- 🤖 **多 Agent 切换** — 侧边栏支持切换不同 Agent，每个 Agent 维护独立会话和历史记录
-- 👁️ **标签页感知** — 列出所有标签页、读取页面内容、截图
-- ⚡ **任务执行引擎** — Agent 发送多步骤任务计划，ClawTab 执行并实时上报进度
-- 🔒 **互斥占用锁** — 同一时间只有一个 Agent 可以占用浏览器，并发请求会被直接拒绝并说明原因
-- 🏷️ **渠道标识** — 设置渠道名称，Gateway 会创建专属 `webchat` 会话并在 Web UI 中可见
-- 🤝 **自动握手** — 连接成功后自动发送握手消息，Web UI 中会话即刻出现
-- 💾 **自动保存** — URL、Token、渠道名称在会话间持久保存
-- 📌 **固定 Extension ID** — 通过 `manifest.json` key 锁定，重装不变
-- 🌐 **中英文切换** — popup 右上角一键切换语言
+- **连接任意 OpenClaw Gateway** — 本地或远程，通过 WebSocket
+- **常驻侧边栏聊天** — 连接后自动打开侧边栏，直接在浏览器中与 Agent 对话
+- **多 Agent 切换** — 侧边栏支持切换不同 Agent，每个 Agent 维护独立会话和历史记录
+- **完整 Markdown 渲染** — Agent 回复支持完整 GFM markdown（标题、列表、代码块、表格等），通过内置 marked.js 渲染
+- **页面元素拾取** — 点击侧边栏的拾取按钮，可在当前页面选中 DOM 元素并附加到消息中
+- **标签页感知** — 列出所有标签页、读取页面内容、截图
+- **任务执行引擎** — Agent 发送 `perceive` / `act` 指令，ClawTab 执行并实时上报结果
+- **互斥占用锁** — 同一时间只有一个 Agent 可以占用浏览器，并发请求会被直接拒绝并说明原因
+- **渠道标识** — 设置渠道名称，Gateway 会创建专属会话并在 Web UI 中可见
+- **自动握手** — 连接成功后自动发送握手消息，Web UI 中会话即刻出现
+- **自动保存** — URL、Token、渠道名称在会话间持久保存
+- **固定 Extension ID** — 通过 `manifest.json` key 锁定，重装不变
+- **中英文切换** — popup 右上角一键切换语言
 
 ## 安装
 
@@ -178,7 +189,7 @@ MIT
 }
 ```
 
-> ⚠️ **需要重启：** 修改 `allowedOrigins` 或 `gateway.auth` 后，必须**完整重启** OpenClaw Gateway 才能生效，热重载（SIGUSR1）对这些配置**无效**。
+> **需要重启：** 修改 `allowedOrigins` 或 `gateway.auth` 后，必须**完整重启** OpenClaw Gateway 才能生效，热重载（SIGUSR1）对这些配置**无效**。
 >
 > ```bash
 > systemctl restart openclaw-gateway
@@ -188,55 +199,57 @@ MIT
 
 完整规范见 [AGENT_PROTOCOL.md](./AGENT_PROTOCOL.md)。
 
-### 快速上手 — 标准调用流程
+Agent 的主要交互方式是**聊天会话**（`agent:{id}:clawtab-{渠道名称}`）。要触发浏览器自动化，Agent 在聊天消息中嵌入 `clawtab_cmd` JSON 块：
 
-**0. 检查浏览器状态**
-```json
-{ "type": "browser_check", "checkId": "chk-001", "agentId": "main" }
-```
-返回：浏览器名称、授权状态、`busy` 标志（是否被其他 Agent 占用）、所有标签页快照（含活跃标签截图）。
-
-**1. 如果 `busy: true` → 终止**
-浏览器已被其他 Agent 占用，响应中包含 `occupiedByAgent` 字段说明当前占用者。
-
-**2. 发送任务计划**
 ```json
 {
-  "type": "task_plan",
-  "taskId": "task-001",
-  "taskName": "获取页面标题",
-  "agentId": "main",
-  "steps": [
-    { "type": "execute_js", "label": "获取标题", "tabId": 1, "code": "document.title" },
-    { "type": "screenshot", "label": "截图",     "tabId": 1 }
-  ]
+  "type": "clawtab_cmd",
+  "cmdId": "cmd-001",
+  "action": "perceive",
+  "agentId": "main"
 }
 ```
 
-**3. 接收结果**
-ClawTab 每步完成后推送 `task_step_result`，全部完成后推送 `task_result`。
+ClawTab 执行指令后，在同一会话中回复 `clawtab_result` JSON 块（侧边栏 UI 不显示，仅 Agent 可见）。
 
-### 互斥占用锁
+### 指令动作
 
-- 同一时间只有**一个 Agent** 可以执行任务
-- 占用期间其他 Agent 发送 `task_plan` 会立即收到错误：
-  ```
-  Browser is currently occupied by agent "main". Task "xxx" is in progress. Please try again later.
-  ```
-- 任务完成/失败/取消后自动释放锁
-- 用户也可以在 ClawTab popup 中手动取消当前任务
+| action | 描述 |
+|---|---|
+| `perceive` | 截取当前标签页 DOM 结构 + 截图 |
+| `act` | 执行单步浏览器操作（见下表） |
+| `task_start` | 标记多步任务开始（更新工具栏图标） |
+| `task_done` | 标记任务完成 |
+| `task_fail` | 标记任务失败 |
+| `cancel` | 中止当前指令 |
 
-### 支持的步骤类型
+### `act` 操作列表
 
-| 类型 | 字段 | 描述 |
+| op | 主要字段 | 描述 |
 |---|---|---|
-| `navigate` | `tabId`, `url` | 导航到指定 URL |
-| `execute_js` | `tabId`, `code` | 执行 JS，返回结果 |
-| `screenshot` | `tabId` | 截取 JPEG 截图 |
-| `get_content` | `tabId` | 获取页面文本和 HTML |
-| `wait` | `ms` | 等待指定毫秒 |
+| `navigate` | `value`（URL） | 导航到指定 URL |
+| `click` | `target`（选择器或文本） | 点击元素 |
+| `fill` | `target`、`value` | 填写输入框 |
+| `clear` | `target` | 清空输入框 |
+| `press` | `value`（键名） | 触发键盘事件 |
+| `select` | `target`、`value` | 选择下拉选项 |
+| `hover` | `target` | 鼠标悬停 |
+| `scroll` | `target`（x）、`value`（y） | 滚动到绝对坐标 |
+| `scroll_by` | `target`（dx）、`value`（dy） | 相对滚动 |
+| `scroll_to_element` | `target` | 滚动到元素 |
+| `wait` | `value`（ms） | 等待 |
+| `wait_for` | `target` | 等待元素出现 |
+| `get_text` | `target` | 读取元素文本 |
+| `get_attr` | `target`、`value`（属性名） | 读取元素属性 |
+| `eval` | `value`（JS 代码） | 执行任意 JavaScript |
+| `screenshot_element` | `target` | 截取单个元素 |
+| `new_tab` | `value`（URL，可选） | 新建标签页 |
+| `close_tab` | `target`（tabId） | 关闭标签页 |
+| `switch_tab` | `target`（tabId） | 切换标签页 |
+| `go_back` | — | 浏览器后退 |
+| `go_forward` | — | 浏览器前进 |
 
-每个步骤可选：`label`（显示名称）、`timeout`（超时毫秒）、`abortOnError: false`（失败后继续）
+每个 `act` 可附加可选字段：`tabId`、`captureAfter`（操作后截图）、`waitAfter`（等待毫秒）。
 
 ## License
 
