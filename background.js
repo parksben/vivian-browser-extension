@@ -325,8 +325,15 @@ async function wsConnect(url,token,browserId) {
         const isNewSession = await ensureSession(); await syncLastSeenId();
         startPolling(); reportTabs();
         const hsKey=`hs_${S.sessionKey}`;
-        const hsFlag=await chrome.storage.local.get([hsKey]);
-        if (!S.lastSeenMsgId && !hsFlag[hsKey]) sendHandshake();
+        if (isNewSession) {
+          // Fresh session on the Gateway — clear stale local state and always (re-)send handshake
+          S.lastSeenMsgId = null;
+          await chrome.storage.local.remove([`lsid_${S.sessionKey}`, hsKey]);
+          await sendHandshake();
+        } else {
+          const hsFlag=await chrome.storage.local.get([hsKey]);
+          if (!S.lastSeenMsgId && !hsFlag[hsKey]) await sendHandshake();
+        }
         // 不在连接时自动截图，截图只在任务执行中更新
       } else {
         const code=msg.payload?.code||'';

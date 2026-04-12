@@ -101,6 +101,7 @@ const sbt = key => SB_I18N[sbLang]?.[key] ?? SB_I18N.zh[key] ?? key;
 const STATE = {
   wsConnected:        false,
   reconnecting:       false,
+  connecting:         false,  // true while user-initiated connect is in progress
   channelName:        '',
   selectedAgent:      'main',
   lastMsgId:          null,
@@ -267,12 +268,14 @@ function showPage(name) {
   document.querySelectorAll('.sb-page').forEach(el => el.classList.remove('active'));
   document.getElementById(`page-${name}`)?.classList.add('active');
   if (name === 'config') {
-    // Always reset connect button and form inputs when returning to config page
-    const btn = document.getElementById('connectBtn');
-    if (btn) { btn.disabled = false; btn.classList.remove('loading'); btn.textContent = sbt('connect'); }
-    ['sbGatewayUrl', 'sbGatewayToken', 'sbBrowserName'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.disabled = false;
-    });
+    // Reset connect button and form inputs — but NOT if user-initiated connect is in progress
+    if (!STATE.connecting) {
+      const btn = document.getElementById('connectBtn');
+      if (btn) { btn.disabled = false; btn.classList.remove('loading'); btn.textContent = sbt('connect'); }
+      ['sbGatewayUrl', 'sbGatewayToken', 'sbBrowserName'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.disabled = false;
+      });
+    }
   }
 }
 
@@ -385,15 +388,17 @@ async function doConnect() {
 
   const btn = document.getElementById('connectBtn');
   const FORM_INPUTS = ['sbGatewayUrl', 'sbGatewayToken', 'sbBrowserName'];
+  STATE.connecting = true;
   FORM_INPUTS.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = true; });
   btn.disabled = true;
   btn.classList.add('loading');
   btn.textContent = sbt('connecting');
   try {
     await bg({ type: 'connect', url, token, name });
-    // bg resolved — connection is in progress; status_update will drive page routing and reset the form
+    // bg resolved — connection in progress; status_update drives page routing and clears STATE.connecting
   } catch(_) {
-    // IPC failure — restore form immediately
+    // IPC failure — restore immediately
+    STATE.connecting = false;
     btn.disabled = false;
     btn.classList.remove('loading');
     btn.textContent = sbt('connect');
@@ -1187,14 +1192,18 @@ chrome.runtime.onMessage.addListener(msg => {
 
     // ── Page routing ──
     if (msg.pairingPending) {
+      STATE.connecting = false;
       showPage('config');
       showPairingSection(msg.deviceId);
     } else if (msg.wsConnected) {
+      STATE.connecting = false;
       showPage('chat');
       hidePairingSection();
       hideRetryTip();
       updateTaskBar(msg.loop);
     } else {
+      // Not connected and not pairing — clear connecting flag on definitive outcomes
+      if (!msg.reconnecting || msg.gaveUp) STATE.connecting = false;
       showPage('config');
       hidePairingSection();
       if (msg.gaveUp) showRetryTip(); else hideRetryTip();
