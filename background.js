@@ -443,6 +443,13 @@ async function doPoll() {
     S.pollBackoff=POLL_IDLE_MS;
     const allMsgs=res.messages||[];
     const seenIdx=S.lastSeenMsgId?allMsgs.findIndex(m=>m.id===S.lastSeenMsgId):-1;
+    // lastSeenMsgId is set but the referenced message slid out of the 20-msg window.
+    // Fast-forward to the end of the current window to avoid re-executing old commands.
+    if (seenIdx===-1 && S.lastSeenMsgId) {
+      if (allMsgs.length>0) { S.lastSeenMsgId=allMsgs[allMsgs.length-1].id; await saveLastSeenId(); }
+      schedulePoll(S.pollInterval);
+      return;
+    }
     const newMsgs=seenIdx>=0?allMsgs.slice(seenIdx+1):allMsgs;
     for (const msg of newMsgs) {
       S.lastSeenMsgId=msg.id; await saveLastSeenId();
@@ -991,7 +998,7 @@ async function sendHandshake() {
       ``,
       `${PROTOCOL_URL}`,
     ].join('\n');
-    await wsRequest('chat.send', { sessionKey: S.sessionKey, message: text, deliver: true, idempotencyKey: crypto.randomUUID() }, 8000);
+    await wsRequest('chat.send', { sessionKey: S.sessionKey, message: text, deliver: true, idempotencyKey: 'hs-' + S.sessionKey }, 8000);
   } catch(e) {
     await chrome.storage.local.remove(hsKey); // 发送失败则撤销标志，下次重试
     console.warn('[ClawTab] handshake failed:', e.message);
