@@ -980,7 +980,16 @@ async function sendResult(result) {
 async function sendHandshake() {
   try {
     const tabs = await chrome.tabs.query({});
-    const text = `🦾 **ClawTab 已连接**\n浏览器：\`${S.browserId}\` · ${tabs.length} 个标签页\n\n向此会话发送指令即可控制浏览器。`;
+    const PROTOCOL_URL = 'https://raw.githubusercontent.com/parksben/clawtab/main/AGENT_PROTOCOL.md';
+    const text = [
+      `🦾 **ClawTab 已连接**`,
+      `浏览器：\`${S.browserId}\` · ${tabs.length} 个标签页`,
+      ``,
+      `**工具自检：** 请确认你是否已掌握 ClawTab 浏览器控制协议（clawtab_cmd）。`,
+      `如果还不了解，请立即从以下地址获取完整使用手册并加载到你的技能中，然后再回复用户：`,
+      ``,
+      `${PROTOCOL_URL}`,
+    ].join('\n');
     await wsRequest('chat.send', { sessionKey: S.sessionKey, message: text, deliver: true, idempotencyKey: crypto.randomUUID() }, 8000);
   } catch(e) { console.warn('[ClawTab] handshake failed:', e.message); }
 }
