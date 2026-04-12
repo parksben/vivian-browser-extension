@@ -10,10 +10,6 @@ ClawTab 是一个 Chrome 浏览器扩展，将浏览器连接到 OpenClaw Gatewa
 clawtab/
 ├── manifest.json              # Chrome Extension Manifest V3
 ├── background.js              # Service Worker — WebSocket 通信、设备配对、clawtab_cmd 执行引擎、sidebar 消息处理
-├── popup/
-│   ├── popup.html             # 弹出窗口 HTML（已不再作为 action popup，保留备用）
-│   ├── popup.css              # 弹出窗口样式
-│   └── popup.js               # 弹出窗口逻辑（已不再作为主入口）
 ├── sidebar/
 │   ├── sidebar.html           # 侧边栏 HTML — 两页：#page-config（连接配置）+ #page-chat（聊天）
 │   ├── sidebar.css            # 侧边栏样式（Config 页 + Chat 页）
@@ -49,7 +45,6 @@ clawtab/
 
 ### 调试
 - **background.js**：在 `chrome://extensions/` 点击扩展卡片的 "Service Worker" 链接，打开 DevTools
-- **popup.js**：右键点击扩展图标 → 检查弹出窗口
 - **sidebar.js**：在侧边栏内右键 → 检查，或从 DevTools Sources 打开
 - **content.js**：在任意网页打开 DevTools → Console
 
@@ -118,12 +113,9 @@ Agent 写入 clawtab_cmd（task_done）→ 更新工具栏图标为完成状态
 - **marked.js 渲染**：`formatText()` 调用 `marked.parse()` + `sanitizeHtml()`（过滤 script/iframe/事件属性）
 - **标签页状态持久化**：`saveTabState()` / `restoreTabState()` 在 `tab_activated` 消息时触发
 
-### popup.js 五层架构（popup 已不作为主入口，仅保留文件）
-原 popup 的所有功能（连接配置、I18N、导入/导出、配对 UI）已合并到 sidebar.js。
-
 ## 已知坑 & 注意事项
 
-### 1. popup.js 不要缓存 DOM 引用
+### 1. sidebar.js 不要缓存 DOM 引用
 **问题**：`const el = document.getElementById('xxx')` 如果在 DOMContentLoaded 时某些元素还未渲染，会得到 null，后续 `el.addEventListener()` 崩溃，**连带阻断所有后续事件绑定**。
 
 **正确做法**：事件处理中实时 `document.getElementById()`，或用事件委托。

@@ -203,9 +203,7 @@ async function loadOrCreateDevice() {
 }
 
 async function signConnect(dev, {token,role,scopes,signedAtMs,nonce}) {
-  const v=nonce?'v2':'v1';
-  const parts=[v,dev.id,'openclaw-control-ui','webchat',role,scopes.join(','),String(signedAtMs),token||''];
-  if(nonce) parts.push(nonce);
+  const parts=['v2',dev.id,'openclaw-control-ui','webchat',role,scopes.join(','),String(signedAtMs),token||'',nonce];
   const sig = await crypto.subtle.sign('Ed25519',dev.keyPair.privateKey,new TextEncoder().encode(parts.join('|')));
   return { id:dev.id, publicKey:dev.publicKeyRaw, signature:b64url(sig), signedAt:signedAtMs, nonce };
 }
@@ -317,10 +315,7 @@ async function wsConnect(url,token,browserId) {
         S.wsReconnectCount=0; S.wsGaveUp=false;
         clearTimeout(S.wsDisconnectTimer); S.wsDisconnectTimer=null;
         clearTimeout(S.wsReconnectTimer);
-        // deviceToken 可能在不同路径
-        const dt = msg.payload?.auth?.deviceToken
-                || msg.payload?.deviceToken
-                || msg.payload?.token;
+        const dt = msg.payload?.auth?.deviceToken;
         if (dt) {
           await chrome.storage.local.set({deviceToken: dt});
           console.log('[ClawTab] deviceToken saved:', dt.slice(0,12)+'...');

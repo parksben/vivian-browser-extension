@@ -246,28 +246,3 @@ ClawTab← executes click
 ClawTab→ chat.send: clawtab_result { ok:true, data:{ clicked, screenshot } }
 Agent  → chat.send: clawtab_cmd task_done { summary:'Clicked buy button' }
 ```
-
----
-
-## Legacy — `browser_check`
-
-Some older agent prompts still use the direct `browser_check` command, sent as a raw chat message. ClawTab still handles it:
-
-```json
-{ "type": "browser_check", "checkId": "chk-001", "agentId": "main" }
-```
-
-Response (`browser_check_result`):
-```json
-{
-  "type": "browser_check_result",
-  "checkId": "chk-001",
-  "browserName": "my-channel",
-  "authorized": true,
-  "busy": false,
-  "tabs": [
-    { "id": 1, "url": "https://example.com", "title": "Example", "active": true, "screenshot": "data:image/jpeg;..." }
-  ],
-  "totalTabs": 3
-}
-```
