@@ -9,8 +9,8 @@
 const SB_I18N = {
   en: {
     // ── Config page ──
+    connectTitle:     'Connect OpenClaw',
     configTitle:      'Connection Settings',
-    configSubtitle:   'OpenClaw Browser Client',
     gatewayUrl:       'Gateway URL',
     gatewayUrlPh:     'wss://your-gateway.example.com',
     token:            'Access Token',
@@ -51,8 +51,8 @@ const SB_I18N = {
   },
   zh: {
     // ── Config page ──
+    connectTitle:     '连接 OpenClaw',
     configTitle:      '连接配置',
-    configSubtitle:   'OpenClaw 浏览器客户端',
     gatewayUrl:       'Gateway 地址',
     gatewayUrlPh:     'wss://your-gateway.example.com',
     token:            '访问令牌',
@@ -93,7 +93,7 @@ const SB_I18N = {
   },
 };
 
-let sbLang = 'zh';
+let sbLang = 'en';
 const sbt = key => SB_I18N[sbLang]?.[key] ?? SB_I18N.zh[key] ?? key;
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -249,12 +249,16 @@ function applyI18n() {
     const key = el.dataset.i18nPh;
     if (key) el.placeholder = sbt(key);
   });
-  // Lang toggle buttons show the opposite language label
-  const label = sbLang === 'en' ? '切换中文' : 'Switch to EN';
+  // Icon-only buttons: update title (tooltip) rather than textContent
+  const switchLabel = sbLang === 'en' ? '切换中文' : 'Switch to EN';
   const lt1 = document.getElementById('langToggle');
   const lt2 = document.getElementById('langToggleChat');
-  if (lt1) lt1.textContent = label;
-  if (lt2) lt2.textContent = label;
+  if (lt1) lt1.title = switchLabel;
+  if (lt2) lt2.title = switchLabel;
+  const expBtn = document.getElementById('exportConfigBtn');
+  const impBtn = document.getElementById('importConfigBtn');
+  if (expBtn) expBtn.title = sbt('exportConfig');
+  if (impBtn) impBtn.title = sbt('importConfig');
 }
 
 // ── Page routing ───────────────────────────────────────────────────────────
@@ -262,6 +266,11 @@ function applyI18n() {
 function showPage(name) {
   document.querySelectorAll('.sb-page').forEach(el => el.classList.remove('active'));
   document.getElementById(`page-${name}`)?.classList.add('active');
+  if (name === 'config') {
+    // Always reset connect button when returning to config page
+    const btn = document.getElementById('connectBtn');
+    if (btn) { btn.disabled = false; btn.classList.remove('loading'); btn.textContent = sbt('connect'); }
+  }
 }
 
 function showRetryTip() {
@@ -373,13 +382,16 @@ async function doConnect() {
 
   const btn = document.getElementById('connectBtn');
   btn.disabled = true;
+  btn.classList.add('loading');
   btn.textContent = sbt('connecting');
   try { await bg({ type: 'connect', url, token, name }); } catch(_) {}
-  // background will broadcast status_update; re-enable button after a moment
-  setTimeout(() => {
+  // showPage('config') resets button when connection result comes via status_update;
+  // if bg call itself errors, restore button immediately
+  if (btn.classList.contains('loading')) {
     btn.disabled = false;
+    btn.classList.remove('loading');
     btn.textContent = sbt('connect');
-  }, 1500);
+  }
 }
 
 async function doDisconnect() {
@@ -1254,7 +1266,7 @@ document.addEventListener('visibilitychange', () => {
 // Sync language if changed externally (e.g. by another session)
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.lang) {
-    sbLang = changes.lang.newValue || 'zh';
+    sbLang = changes.lang.newValue || 'en';
     applyI18n();
     updateStatus();
     renderAll();

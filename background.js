@@ -329,7 +329,9 @@ async function wsConnect(url,token,browserId) {
         drawIcon('connected'); broadcastStatus();
         const isNewSession = await ensureSession(); await syncLastSeenId();
         startPolling(); reportTabs();
-        if (!S.lastSeenMsgId) sendHandshake(); // 全新 session 才发握手，重连不重发
+        const hsKey=`hs_${S.sessionKey}`;
+        const hsFlag=await chrome.storage.local.get([hsKey]);
+        if (!S.lastSeenMsgId && !hsFlag[hsKey]) sendHandshake();
         // 不在连接时自动截图，截图只在任务执行中更新
       } else {
         const code=msg.payload?.code||'';
@@ -444,7 +446,10 @@ async function doPoll() {
       sessionKey:S.sessionKey,limit:20,
     },8000);
     S.pollBackoff=POLL_IDLE_MS;
-    for (const msg of (res.messages||[])) {
+    const allMsgs=res.messages||[];
+    const seenIdx=S.lastSeenMsgId?allMsgs.findIndex(m=>m.id===S.lastSeenMsgId):-1;
+    const newMsgs=seenIdx>=0?allMsgs.slice(seenIdx+1):allMsgs;
+    for (const msg of newMsgs) {
       S.lastSeenMsgId=msg.id; await saveLastSeenId();
       if (msg.role!=='assistant') continue;
       const text=typeof msg.content==='string'?msg.content:(msg.blocks?.find(b=>b.type==='text')?.text||'');
@@ -977,6 +982,8 @@ async function sendResult(result) {
 }
 
 async function sendHandshake() {
+  const hsKey=`hs_${S.sessionKey}`;
+  await chrome.storage.local.set({[hsKey]:true}); // 先持久化标志，防止 SW 重启后重发
   try {
     const tabs = await chrome.tabs.query({});
     const PROTOCOL_URL = 'https://raw.githubusercontent.com/parksben/clawtab/main/AGENT_PROTOCOL.md';
@@ -990,7 +997,10 @@ async function sendHandshake() {
       `${PROTOCOL_URL}`,
     ].join('\n');
     await wsRequest('chat.send', { sessionKey: S.sessionKey, message: text, deliver: true, idempotencyKey: crypto.randomUUID() }, 8000);
-  } catch(e) { console.warn('[ClawTab] handshake failed:', e.message); }
+  } catch(e) {
+    await chrome.storage.local.remove(hsKey); // 发送失败则撤销标志，下次重试
+    console.warn('[ClawTab] handshake failed:', e.message);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
