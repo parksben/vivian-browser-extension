@@ -25,10 +25,13 @@ clawtab/
 │   ├── icon48.png
 │   ├── icon128.png
 │   └── generate_icons.js      # 图标生成脚本
-├── README.md                  # 用户文档（中英文）
+├── README.md                  # 用户文档（英文，默认）
+├── README_ZH.md               # 用户文档（中文）
 ├── PRD.md                     # 需求文档
 ├── AGENT_PROTOCOL.md          # Agent 通信协议规范
-└── DEVELOPMENT.md             # 本文件
+├── DEVELOPMENT.md             # 本文件
+└── scripts/
+    └── setup-gateway.sh       # OpenClaw Gateway 一键配置脚本
 ```
 
 ## 开发环境
