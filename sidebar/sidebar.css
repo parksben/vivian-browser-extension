@@ -474,7 +474,7 @@ body {
   gap: 8px;
 }
 
-.sb-config-title { font-size: 13px; font-weight: 600; color: #475569; }
+.sb-config-title { font-size: 14px; font-weight: 700; color: #1e293b; }
 
 .sb-header-tools {
   display: flex;
@@ -529,22 +529,56 @@ body {
   padding: 16px 14px;
 }
 
-.sb-section-title {
-  font-size: 10px;
-  font-weight: 600;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  margin-bottom: 12px;
+/* Section header row (title + action buttons) */
+.sb-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #e2e8f0;
+  gap: 8px;
 }
+
+.sb-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.sb-section-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Import / Export small action buttons (icon + label) */
+.sb-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  color: #64748b;
+  cursor: pointer;
+  line-height: 1.35;
+  transition: background .13s, border-color .13s, color .13s;
+}
+.sb-tool-btn:hover { background: #f1f5f9; border-color: #cbd5e1; color: #1e293b; }
 
 .sb-form-group { margin-bottom: 14px; }
 
 .sb-form-label {
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  color: #475569;
+  color: #64748b;
   margin-bottom: 5px;
 }
 
