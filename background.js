@@ -25,6 +25,7 @@ const S = {
   wsReconnectDelay: 1000, wsReconnectTimer: null,
   wsReconnectCount: 0,   // 连续失败次数
   wsGaveUp: false,       // 超过3次，停止重连
+  wsManualDisconnect: false, // 用户主动断连，不自动重连
   wsDisconnectTimer: null, // 断线保护 timer（避免闪烁）
   wsPendingConnectId: null, wsPendingNonce: null,
 
@@ -330,7 +331,7 @@ async function wsConnect(url,token,browserId) {
         drawIcon('connected'); broadcastStatus();
         const isNewSession = await ensureSession(); await syncLastSeenId();
         startPolling(); reportTabs();
-        if (isNewSession) sendHandshake();
+        if (!S.lastSeenMsgId) sendHandshake(); // 全新 session 才发握手，重连不重发
         // 不在连接时自动截图，截图只在任务执行中更新
       } else {
         const code=msg.payload?.code||'';
@@ -1004,9 +1005,13 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
       case 'connect':
         S.deviceIdentity=await loadOrCreateDevice();
         S.wsReconnectCount=0; S.wsGaveUp=false; S.wsReconnectDelay=1000;
+        S.wsManualDisconnect=false;
+        await chrome.storage.local.set({manualDisconnect:false});
         await wsConnect(msg.url,msg.token,msg.name||'browser');
         sendResponse({ok:true}); break;
       case 'disconnect':
+        S.wsManualDisconnect=true; S.wsUrl=''; S.wsToken='';
+        await chrome.storage.local.set({manualDisconnect:true});
         wsDisconnect(); S.wsConnected=false; drawIcon('idle'); broadcastStatus();
         sendResponse({ok:true}); break;
       case 'get_status':
@@ -1281,14 +1286,15 @@ chrome.tabs.onActivated.addListener(({tabId})=>{
 chrome.alarms.create('keepalive',{periodInMinutes:0.4});
 chrome.alarms.onAlarm.addListener(alarm=>{
   if(alarm.name!=='keepalive') return;
-  if(!S.wsConnected&&S.wsUrl&&S.wsToken&&!S.wsReconnectTimer&&!S.ws) wsConnect(S.wsUrl,S.wsToken,S.browserId);
+  if(!S.wsManualDisconnect&&!S.wsConnected&&S.wsUrl&&S.wsToken&&!S.wsReconnectTimer&&!S.ws) wsConnect(S.wsUrl,S.wsToken,S.browserId);
   if(S.wsConnected&&!S.pollTimer&&!S.pollPaused) schedulePoll(0);
 });
 
 async function init() {
   drawIcon('idle');
   S.deviceIdentity=await loadOrCreateDevice();
-  const data=await chrome.storage.local.get(['gatewayUrl','gatewayToken','browserName']);
+  const data=await chrome.storage.local.get(['gatewayUrl','gatewayToken','browserName','manualDisconnect']);
+  if(data.manualDisconnect) { S.wsManualDisconnect=true; return; }
   if(data.gatewayUrl&&data.gatewayToken&&!S.ws&&!S.wsConnected) {
     S.wsReconnectCount=0; S.wsGaveUp=false; S.wsReconnectDelay=1000;
     await wsConnect(data.gatewayUrl,data.gatewayToken,data.browserName||'browser');
