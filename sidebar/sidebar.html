@@ -69,6 +69,18 @@
         </div>
 
         <button class="sb-connect-btn" id="connectBtn" data-i18n="connect"></button>
+
+        <!-- Diagnostics (available before or after connect) -->
+        <div class="sb-diag-row">
+          <button class="sb-tool-btn" id="exportLogsBtnConfig">
+            <svg class="icon" width="12" height="12"><use href="#icon-download"></use></svg>
+            <span data-i18n="exportLogs"></span>
+          </button>
+          <button class="sb-tool-btn sb-tool-btn--danger" id="clearLogsBtn">
+            <svg class="icon" width="12" height="12"><use href="#icon-trash-2"></use></svg>
+            <span data-i18n="clearLogs"></span>
+          </button>
+        </div>
       </div>
 
       <!-- 配对等待（替换表单显示） -->
@@ -111,6 +123,9 @@
           <span class="sb-status-text" id="statusText">—</span>
         </div>
         <button class="sb-lang-btn" id="langToggleChat"></button>
+        <button class="sb-icon-btn" id="exportLogsBtn" title="Export logs" data-i18n-title="exportLogs">
+          <svg class="icon" width="15" height="15"><use href="#icon-download"></use></svg>
+        </button>
         <button class="sb-icon-btn sb-disconnect-btn" id="disconnectBtn" title="Disconnect">
           <svg class="icon" width="15" height="15"><use href="#icon-power-off"></use></svg>
         </button>

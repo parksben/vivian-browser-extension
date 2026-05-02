@@ -34,6 +34,19 @@
 - 支持中英文切换（侧边栏左上角切语言按钮），偏好持久化。
 - 提供"元素拾取"模式，可在页面上挑选 DOM 元素并以 `#1: tag` 形式作为附件附在消息中。
 
+### 诊断日志
+- 用户可以**一键导出诊断日志**：
+  - Chat 页面 header 提供下载图标按钮，连接成功后随时可点。
+  - Config 页面表单底部也有"导出日志 / 清除日志"两枚按钮，未连接时也可用。
+- 导出文件是单个 `.txt`，包含：
+  1. 当前连接状态（wsConnected / sessionKey / loop status / 最近 step 历史 等）
+  2. 配置（**Token / Device Token 已自动 redact，只保留前 4 位 + 长度**）
+  3. 最近 500 条结构化日志（毫秒级时间戳 + level + 来源 + 信息 + 关键 data）
+  4. 当前 session 的最近 50 条 chat history（包含 user / assistant 完整文本，用于配合日志定位）
+- 日志缓冲区存放在 `chrome.storage.local`，Service Worker 重启后内容仍然在；500 条上限按 ring buffer 滚动，旧的丢弃。
+- "清除日志"按钮会删除内存与磁盘上的全部日志（弹确认框防止误触）。
+- **设计目的**：用户在遇到 bug 时可以一键把日志包发给开发者，避免来回追问"截图 / 你看 console / 这一步发生了什么"。
+
 ## 非目标
 - 不内置 Agent 推理能力，所有指令来自远端 Gateway 上的 Agent。
 - 不做 OAuth / 账号体系，鉴权完全依赖 Gateway 颁发的 Token + 设备密钥。

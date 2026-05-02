@@ -572,6 +572,18 @@ body {
 }
 .sb-tool-btn:hover { background: #f1f5f9; border-color: #cbd5e1; color: #1e293b; }
 
+.sb-tool-btn--danger { color: #b91c1c; border-color: #fecaca; }
+.sb-tool-btn--danger:hover { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+
+.sb-diag-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #e2e8f0;
+}
+
 .sb-form-group { margin-bottom: 14px; }
 
 .sb-form-label {

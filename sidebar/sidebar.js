@@ -48,6 +48,12 @@ const SB_I18N = {
     loopDone:       'Task complete',
     loopFailed:     'Task failed',
     loopCancelled:  'Cancelled',
+    // ── Diagnostics ──
+    exportLogs:    'Export logs',
+    clearLogs:     'Clear logs',
+    clearLogsConfirm: 'Clear all diagnostic logs on this browser?',
+    logsCleared:   'Logs cleared',
+    exportFailed:  'Failed to export logs',
   },
   zh: {
     // ── Config page ──
@@ -90,6 +96,12 @@ const SB_I18N = {
     loopDone:       '任务完成',
     loopFailed:     '任务失败',
     loopCancelled:  '已取消',
+    // ── Diagnostics ──
+    exportLogs:    '导出日志',
+    clearLogs:     '清除日志',
+    clearLogsConfirm: '确定要清除浏览器里所有诊断日志吗？',
+    logsCleared:   '日志已清除',
+    exportFailed:  '导出日志失败',
   },
 };
 
@@ -128,6 +140,11 @@ function sessionKey() {
 
 function bg(msg) {
   return chrome.runtime.sendMessage(msg);
+}
+
+// Fire-and-forget structured log to the background ring buffer.
+function clog(level, message, data) {
+  bg({ type: 'log_event', level, src: 'sidebar', msg: message, data }).catch(() => {});
 }
 
 function msgText(msg) {
@@ -265,6 +282,10 @@ function applyI18n() {
   document.querySelectorAll('[data-i18n-ph]').forEach(el => {
     const key = el.dataset.i18nPh;
     if (key) el.placeholder = sbt(key);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const key = el.dataset.i18nTitle;
+    if (key) el.title = sbt(key);
   });
   // Language toggle buttons: show target language as visible text label
   const langLabel = sbLang === 'en' ? '中文' : 'English';
@@ -465,6 +486,120 @@ async function doImport(file) {
   } catch {
     showToast(sbt('importError'), true);
   }
+}
+
+// ── Diagnostics: export / clear ─────────────────────────────────────────────
+
+function fmtTime(ms) {
+  if (!ms) return '—';
+  const d = new Date(ms);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ` +
+         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3,'0')}`;
+}
+
+function formatDiagBundle(b) {
+  const lines = [];
+  lines.push('ClawTab 诊断报告 / Diagnostic Report');
+  lines.push(`生成时间 / Generated: ${fmtTime(b.generatedAt)}`);
+  lines.push(`扩展版本 / Version:   ${b.version}`);
+  lines.push('');
+
+  lines.push('══════════════════════════════════════════════════════════');
+  lines.push('## 当前状态 / Current State');
+  const s = b.state || {};
+  lines.push(`wsConnected:      ${s.wsConnected}`);
+  lines.push(`reconnecting:     ${s.reconnecting}`);
+  lines.push(`pairingPending:   ${s.pairingPending}`);
+  lines.push(`wsGaveUp:         ${s.wsGaveUp}`);
+  lines.push(`wsReconnectCount: ${s.wsReconnectCount}`);
+  lines.push(`browserId:        ${s.browserId || '—'}`);
+  lines.push(`sessionKey:       ${s.sessionKey || '—'}`);
+  lines.push(`deviceId:         ${s.deviceId || '—'}`);
+  lines.push(`lastSeenMsgId:    ${s.lastSeenMsgId || '—'}`);
+  lines.push(`tabCount:         ${s.tabCount}`);
+  lines.push(`lastCmd:          ${s.lastCmd || '—'}`);
+  lines.push(`loop.status:      ${s.loop?.status || 'idle'}`);
+  lines.push(`loop.goal:        ${s.loop?.goal || '—'}`);
+  lines.push(`loop.agentId:     ${s.loop?.agentId || '—'}`);
+  lines.push(`loop.stepIndex:   ${s.loop?.stepIndex ?? 0}`);
+  lines.push(`loop.statusText:  ${s.loop?.statusText || '—'}`);
+  lines.push(`loop.errorMsg:    ${s.loop?.errorMsg || '—'}`);
+  lines.push(`loop.startedAt:   ${s.loop?.startedAt ? fmtTime(s.loop.startedAt) : '—'}`);
+  if (Array.isArray(s.loop?.history) && s.loop.history.length) {
+    lines.push('loop.recentSteps:');
+    for (const h of s.loop.history) {
+      lines.push(`  - [${h.status}] ${h.op}: ${h.desc || ''} (${h.durationMs || 0}ms)${h.error ? ' ← ' + h.error : ''}`);
+    }
+  }
+  lines.push('');
+
+  lines.push('## 配置 / Config (tokens redacted)');
+  const cfg = b.config || {};
+  for (const k of Object.keys(cfg)) lines.push(`${k}: ${cfg[k] ?? '—'}`);
+  lines.push('');
+
+  lines.push('══════════════════════════════════════════════════════════');
+  const logs = b.logs || [];
+  lines.push(`## 日志 / Logs (${logs.length} entries)`);
+  for (const e of logs) {
+    const time = fmtTime(e.t).slice(11); // HH:mm:ss.SSS
+    const level = (e.level || 'info').toUpperCase().padEnd(5);
+    const src = (e.src || 'bg').padEnd(7);
+    let line = `[${time}] [${level}] [${src}] ${e.msg}`;
+    if (e.data) line += ` | ${e.data}`;
+    lines.push(line);
+  }
+  lines.push('');
+
+  lines.push('══════════════════════════════════════════════════════════');
+  const hist = b.chatHistory || [];
+  lines.push(`## 聊天历史 / Chat History (${hist.length} messages)`);
+  for (const m of hist) {
+    const role = m.role || '?';
+    const id   = m.id || '';
+    const text = typeof m.content === 'string'
+      ? m.content
+      : Array.isArray(m.content)
+        ? m.content.filter(b => b.type === 'text').map(b => b.text || '').join('')
+        : (m.blocks?.filter(b => b.type === 'text').map(b => b.text || '').join('') || '');
+    lines.push(`--- [${role}] ${id} ---`);
+    lines.push(text || '(empty)');
+  }
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+async function exportLogs() {
+  let res;
+  try {
+    res = await bg({ type: 'diag_get' });
+  } catch (e) {
+    showToast(sbt('exportFailed'), true);
+    return;
+  }
+  if (!res?.ok) {
+    showToast(sbt('exportFailed'), true);
+    return;
+  }
+  const text = formatDiagBundle(res);
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const fname = `clawtab-diag-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.txt`;
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })),
+    download: fname,
+  });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  clog('info', 'logs exported', { bytes: text.length, fname });
+}
+
+async function clearLogs() {
+  if (!confirm(sbt('clearLogsConfirm'))) return;
+  try { await bg({ type: 'log_clear' }); showToast(sbt('logsCleared')); }
+  catch(_) {}
 }
 
 // ── Thinking indicator ─────────────────────────────────────────────────────
@@ -788,7 +923,7 @@ async function fetchHistory() {
       sessionKey: sessionKey(),
     });
     if (!res?.ok) {
-      console.warn('[Sidebar] fetchHistory failed:', res?.error);
+      clog('warn', 'fetchHistory failed', { error: res?.error });
       return;
     }
     if (!res.messages?.length) return;
@@ -893,7 +1028,7 @@ async function sendMessage() {
       STATE.pendingEchoContent = null;
       const errMsg = res?.error || '未知错误，请检查连接后重试';
       const detail = res?.code ? ` [${res.code}]` : '';
-      console.warn('[Sidebar] send failed:', errMsg, res?.code || '');
+      clog('warn', 'send failed', { error: errMsg, code: res?.code });
       appendErrorNode(errMsg + detail);
       return;
     }
@@ -910,7 +1045,7 @@ async function sendMessage() {
     }, 60000);
   } catch (e) {
     STATE.pendingEchoContent = null;
-    console.warn('[Sidebar] send exception:', e.message);
+    clog('error', 'send exception', { error: e.message });
     appendErrorNode('发送异常：' + e.message);
   } finally {
     STATE.sending = false;
@@ -1102,6 +1237,12 @@ document.getElementById('importFile').addEventListener('change', async (e) => {
   await doImport(file);
   e.target.value = '';
 });
+
+// Diagnostic logs — both the chat-header icon button and the config-page row
+// trigger the same export / clear flow.
+document.getElementById('exportLogsBtn')?.addEventListener('click', exportLogs);
+document.getElementById('exportLogsBtnConfig')?.addEventListener('click', exportLogs);
+document.getElementById('clearLogsBtn')?.addEventListener('click', clearLogs);
 
 // Token eye toggle
 document.getElementById('toggleToken').addEventListener('click', () => {
@@ -1309,6 +1450,7 @@ chrome.runtime.onMessage.addListener(msg => {
 init();
 
 chrome.runtime.sendMessage({ type: 'sidebar_opened' }).catch(() => {});
+clog('info', 'sidebar opened', { ua: navigator.userAgent });
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {

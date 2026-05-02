@@ -120,8 +120,49 @@ if (!alreadySent && !S.lastSeenMsgId) await sendHandshake();
 ## UI 约定
 
 - **双页结构**：Config / Chat，由 `status_update` 消息驱动切换。
-- **i18n**：所有可见字符串通过 `data-i18n` 属性 + `applyI18n()`，禁止直接对 `statusText` 等元素 `textContent =`。
+- **i18n**：所有可见字符串通过 `data-i18n` 属性 + `applyI18n()`，禁止直接对 `statusText` 等元素 `textContent =`。`applyI18n` 同时支持 `data-i18n-ph`（placeholder）和 `data-i18n-title`（title 提示）。
 - **Toolbar 图标**：稳定状态用 PNG，瞬时状态（connecting / perceiving / thinking / acting / failed）用 canvas 现场绘制带颜色的"C"角标。
+
+## 诊断日志（重要）
+
+`background.js` 是日志唯一的写入与持久化点，sidebar / content 通过 `chrome.runtime.sendMessage({type:'log_event'})` 单向推送，由 background 落到统一的 ring buffer。这样无论是哪条上下文产生的事件，最终都汇聚到一个有序时间线，导出时不需要做合并。
+
+### 数据结构
+
+```js
+S.logs: Array<{ t: number, level: 'info'|'warn'|'error', src: 'bg'|'sidebar'|'content', msg: string, data?: string }>
+```
+
+- `LOG_CAP = 500`，超出时从前面 splice，标准 ring buffer。
+- `data` 字段是 `safeSerialize()` 处理过的 JSON 字符串：循环引用降级为 `[circular]`、单字段超过 `LOG_DATA_MAX_CHARS` (600) 自动截断，整个序列化结果再加一道总长上限。**这是为了防止把整张截图 base64 写进日志撑爆 storage**。
+
+### 持久化策略
+
+- `loadLogs()` 在 SW init 时一次性从 `chrome.storage.local.get('diag_logs')` 恢复。
+- 每次 `logEvent` 写入后调用 `persistLogsSoon()`：250 ms 防抖写盘。SW 被杀的极端情况下可能丢最近 250 ms 内的日志，但避免了对 storage 的高频写。
+- `chrome.storage.local` 单 key 容量 5 MB，500 条 × ≤1.2 KB ≈ 600 KB 上限，留足余量。
+
+### 导出流程
+
+`sidebar` 触发 → `bg({type:'diag_get'})` → background 当场拼装 bundle：
+
+| 字段 | 来源 |
+|------|------|
+| `state` | `S` 中的连接状态 + loop 状态（最近 16 条 history） |
+| `config` | `chrome.storage.local.get(['gatewayUrl','gatewayToken','browserName','deviceToken','manualDisconnect'])`，**先经 `redactConfig()` 抹掉 token / secret / password / key 字段，只保留前 4 + 后 2 字符 + 长度** |
+| `logs` | `S.logs.slice()`（直接拷自内存，避开 250 ms 防抖窗） |
+| `chatHistory` | 临时打一次 `chat.history` (limit 50)，未连接时为空数组 |
+
+sidebar 拿到 bundle 后由 `formatDiagBundle()` 拼成可读纯文本，浏览器原生下载。
+
+### 为什么不直接共享 `chrome.storage.local`
+
+- 三方上下文（content / sidebar）写 storage 会绕过 `safeSerialize` 的截断逻辑；统一走 background `logEvent` 才能保证 ring buffer 大小可控。
+- background 顺带做了 console mirror，开发期间在 SW devtools 里能直接看到，无需先导出再翻文件。
+
+### redactConfig 的覆盖范围
+
+`/token|secret|password|key/i` 命中即 redact。这是宁可错杀的策略，新加配置项时如果命名带这些字眼会被自动遮蔽，避免遗漏导致 token 流出到用户分享的日志包里。
 
 ## 已知坑（汇总自 DEVELOPMENT.md）
 

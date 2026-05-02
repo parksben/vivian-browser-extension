@@ -62,7 +62,91 @@ const S = {
 
   // Handshake in-flight lock (in-process; persistent flag is hs_<sessionKey> in storage)
   handshakeInFlight: false,
+
+  // Diagnostic logs (ring buffer in memory + persisted to chrome.storage.local)
+  logs: [],
+  logPersistTimer: null,
 };
+
+// ═══════════════════════════════════════════════════════
+// SECTION 2.5: Diagnostic logger
+// ═══════════════════════════════════════════════════════
+//
+// Structured ring buffer (500 entries cap) persisted under `diag_logs`.
+// `logEvent()` is the only write path; everything else (sidebar, content)
+// funnels in through the `log_event` message handler.
+
+const LOG_CAP = 500;
+const LOG_DATA_MAX_CHARS = 600;
+
+async function loadLogs() {
+  try {
+    const { diag_logs } = await chrome.storage.local.get('diag_logs');
+    const stored = Array.isArray(diag_logs) ? diag_logs : [];
+    // Merge: anything that landed during the SW-boot window stays; storage
+    // contents come first so the timeline is in chronological order.
+    S.logs = stored.concat(S.logs || []).slice(-LOG_CAP);
+  } catch(_) { /* keep whatever S.logs already had */ }
+}
+
+function persistLogsSoon() {
+  if (S.logPersistTimer) return;
+  S.logPersistTimer = setTimeout(() => {
+    S.logPersistTimer = null;
+    chrome.storage.local.set({ diag_logs: S.logs }).catch(() => {});
+  }, 250);
+}
+
+function safeSerialize(data) {
+  if (data === undefined || data === null) return undefined;
+  try {
+    const seen = new WeakSet();
+    const str = JSON.stringify(data, (_, v) => {
+      if (typeof v === 'object' && v !== null) {
+        if (seen.has(v)) return '[circular]';
+        seen.add(v);
+      }
+      if (typeof v === 'string' && v.length > LOG_DATA_MAX_CHARS)
+        return v.slice(0, LOG_DATA_MAX_CHARS) + `…(+${v.length - LOG_DATA_MAX_CHARS} chars)`;
+      return v;
+    });
+    return str.length > LOG_DATA_MAX_CHARS * 2
+      ? str.slice(0, LOG_DATA_MAX_CHARS * 2) + '…'
+      : str;
+  } catch { return String(data); }
+}
+
+function logEvent(level, src, msg, data) {
+  const entry = {
+    t: Date.now(),
+    level: level || 'info',
+    src:   src   || 'bg',
+    msg:   String(msg == null ? '' : msg),
+  };
+  const ser = safeSerialize(data);
+  if (ser !== undefined) entry.data = ser;
+
+  S.logs.push(entry);
+  if (S.logs.length > LOG_CAP) S.logs.splice(0, S.logs.length - LOG_CAP);
+  persistLogsSoon();
+
+  // Mirror to devtools console so inline debugging still works.
+  const line = `[${entry.src}] ${entry.msg}`;
+  if (entry.level === 'error')      console.error(line, data ?? '');
+  else if (entry.level === 'warn')  console.warn(line, data ?? '');
+  else                              console.log(line, data ?? '');
+}
+
+function redactConfig(obj) {
+  const out = { ...obj };
+  for (const k of Object.keys(out)) {
+    if (/token|secret|password|key/i.test(k) && typeof out[k] === 'string' && out[k]) {
+      const s = out[k];
+      out[k] = s.length > 8 ? `${s.slice(0,4)}…${s.slice(-2)} (len=${s.length})` : `***(len=${s.length})`;
+    }
+  }
+  return out;
+}
 
 // ═══════════════════════════════════════════════════════
 // SECTION 3: Icon
@@ -254,7 +338,7 @@ async function wsConnect(url,token,browserId) {
   // 幂等保护：相同参数且正在连接中，直接返回，不打断
   if (S.ws && S.ws.readyState === WebSocket.CONNECTING &&
       S.wsUrl === url && S.wsToken === token) {
-    console.log('[ClawTab] wsConnect: already connecting to same endpoint, skip');
+    logEvent('info','bg','wsConnect skipped (already CONNECTING to same endpoint)');
     return;
   }
   wsDisconnect(); // 静默关闭旧连接，不触发 onclose 回调
@@ -264,12 +348,12 @@ async function wsConnect(url,token,browserId) {
   // 重置只在用户主动发起连接时（connect handler / init）执行，
   // 这样 wsScheduleReconnect 的计数器才能真正累计并在 3 次后 giveUp。
   drawIcon('connecting'); broadcastStatus();
-  console.log('[ClawTab] wsConnect →', url, '| channel:', browserId, '| retry#', S.wsReconnectCount);
+  logEvent('info','bg','wsConnect →', { url, browserId, sessionKey: S.sessionKey, retry: S.wsReconnectCount });
 
-  try { S.ws=new WebSocket(url); } catch(e) { wsScheduleReconnect(); return; }
+  try { S.ws=new WebSocket(url); } catch(e) { logEvent('error','bg','WebSocket constructor threw',{error:e.message}); wsScheduleReconnect(); return; }
 
   S.ws.onopen = async () => {
-    console.log('[ClawTab] onopen — sending connect request');
+    logEvent('info','bg','ws onopen — sending initial connect req');
     const cid='connect-'+Date.now();
     S.wsPendingConnectId=cid; S.wsPendingNonce=null;
     const stored=await chrome.storage.local.get(['deviceToken']);
@@ -291,12 +375,12 @@ async function wsConnect(url,token,browserId) {
     // challenge
     if (msg.type==='event'&&msg.event==='connect.challenge') {
       S.wsPendingNonce=msg.payload?.nonce||null;
-      console.log('[ClawTab] challenge received | deviceIdentity:', !!S.deviceIdentity, '| nonce:', !!S.wsPendingNonce);
+      logEvent('info','bg','connect.challenge received', { hasIdentity: !!S.deviceIdentity, hasNonce: !!S.wsPendingNonce });
       if (S.deviceIdentity&&S.wsPendingNonce&&S.wsPendingConnectId) {
         const role='operator',scopes=SCOPES,signedAtMs=Date.now();
         const device=await signConnect(S.deviceIdentity,{token:S.wsToken,role,scopes,signedAtMs,nonce:S.wsPendingNonce});
         const stored=await chrome.storage.local.get(['deviceToken']);
-        console.log('[ClawTab] sending signed connect | devId:', S.deviceIdentity.id?.slice(0,8));
+        logEvent('info','bg','sending signed connect', { deviceIdPrefix: S.deviceIdentity.id?.slice(0,8) });
         wsSend({type:'req',id:S.wsPendingConnectId,method:'connect',params:{
           minProtocol:3,maxProtocol:3,
           client:{id:'openclaw-control-ui',version:'1.71.3',platform:'browser_extension',mode:'webchat'},
@@ -306,7 +390,7 @@ async function wsConnect(url,token,browserId) {
           userAgent:`clawtab/${VERSION}${S.browserId?' ('+S.browserId+')':''}`,
         }});
       } else {
-        console.warn('[ClawTab] challenge: cannot sign — missing deviceIdentity/nonce/connectId');
+        logEvent('warn','bg','connect.challenge: cannot sign — missing deviceIdentity/nonce/connectId');
       }
       return;
     }
@@ -321,11 +405,12 @@ async function wsConnect(url,token,browserId) {
         const dt = msg.payload?.auth?.deviceToken;
         if (dt) {
           await chrome.storage.local.set({deviceToken: dt});
-          console.log('[ClawTab] deviceToken saved:', dt.slice(0,12)+'...');
+          logEvent('info','bg','deviceToken saved', { prefix: dt.slice(0,8)+'…' });
         }
-        console.log('[ClawTab] connect ok, payload keys:', Object.keys(msg.payload||{}));
+        logEvent('info','bg','connect.ok', { payloadKeys: Object.keys(msg.payload||{}) });
         drawIcon('connected'); broadcastStatus();
         const isNewSession = await ensureSession(); await syncLastSeenId();
+        logEvent('info','bg','session ready', { isNewSession, lastSeenMsgId: S.lastSeenMsgId });
         startPolling(); reportTabs();
         const hsKey=`hs_${S.sessionKey}`;
         if (isNewSession) {
@@ -339,11 +424,16 @@ async function wsConnect(url,token,browserId) {
           await chrome.storage.local.remove([`lsid_${S.sessionKey}`]);
         }
         const hsFlag = await chrome.storage.local.get([hsKey]);
-        if (!hsFlag[hsKey] && !S.lastSeenMsgId) await sendHandshake();
+        if (!hsFlag[hsKey] && !S.lastSeenMsgId) {
+          logEvent('info','bg','handshake gate: sending', { alreadySent: false, hasLastSeen: false });
+          await sendHandshake();
+        } else {
+          logEvent('info','bg','handshake gate: skipped', { alreadySent: !!hsFlag[hsKey], hasLastSeen: !!S.lastSeenMsgId });
+        }
         // 不在连接时自动截图，截图只在任务执行中更新
       } else {
         const code=msg.payload?.code||'';
-        console.warn('[ClawTab] connect failed | code:', code, '| payload:', JSON.stringify(msg.payload));
+        logEvent('warn','bg','connect failed', { code, payload: msg.payload });
         if (code==='NOT_PAIRED') {
           S.pairingPending=true;
           clearTimeout(S.wsReconnectTimer);
@@ -361,9 +451,9 @@ async function wsConnect(url,token,browserId) {
     if (msg.type==='res') { resolvePending(msg.id,msg); return; }
   };
 
-  S.ws.onerror=(e)=>{ console.warn('[ClawTab] ws onerror', e?.message||''); };
+  S.ws.onerror=(e)=>{ logEvent('warn','bg','ws onerror', { message: e?.message || '' }); };
   S.ws.onclose=(ev)=>{
-    console.log('[ClawTab] onclose | code:', ev?.code, '| reason:', ev?.reason||'(none)');
+    logEvent('info','bg','ws onclose', { code: ev?.code, reason: ev?.reason || '' });
     S.ws=null; S.wsConnected=false;
     if (S.loop.status==='acting'||S.loop.status==='perceiving') {
       setLoopStatus('failed','Connection lost during task',{errorMsg:'WebSocket disconnected'});
@@ -433,7 +523,7 @@ async function syncLastSeenId() {
     const res=await wsRequest('chat.history',{sessionKey:S.sessionKey,limit:50},8000);
     const msgs=res.messages||[];
     if (msgs.length>0) { S.lastSeenMsgId=msgs[msgs.length-1].id; await saveLastSeenId(); }
-  } catch(e) { console.warn('[ClawTab] syncLastSeenId:',e.message); }
+  } catch(e) { logEvent('warn','bg','syncLastSeenId failed',{error:e.message}); }
 }
 
 async function saveLastSeenId() {
@@ -442,6 +532,7 @@ async function saveLastSeenId() {
 
 function startPolling() {
   stopPolling(); S.pollInterval=POLL_IDLE_MS; S.pollBackoff=POLL_IDLE_MS; S.pollPaused=false;
+  logEvent('info','bg','polling started',{interval:S.pollInterval});
   schedulePoll(0);
 }
 function stopPolling() { clearTimeout(S.pollTimer); S.pollTimer=null; }
@@ -459,6 +550,7 @@ async function doPoll() {
     // lastSeenMsgId is set but the referenced message slid out of the 20-msg window.
     // Fast-forward to the end of the current window to avoid re-executing old commands.
     if (seenIdx===-1 && S.lastSeenMsgId) {
+      logEvent('warn','bg','doPoll: lastSeenMsgId slid out of window, fast-forwarding', { lastSeenMsgId: S.lastSeenMsgId, windowSize: allMsgs.length });
       if (allMsgs.length>0) { S.lastSeenMsgId=allMsgs[allMsgs.length-1].id; await saveLastSeenId(); }
       schedulePoll(S.pollInterval);
       return;
@@ -470,11 +562,12 @@ async function doPoll() {
       const text=typeof msg.content==='string'?msg.content:(msg.blocks?.find(b=>b.type==='text')?.text||'');
       const match=text.match(/```json\s*([\s\S]*?)```/);
       if (!match) continue;
-      let parsed; try{parsed=JSON.parse(match[1]);}catch{continue;}
+      let parsed; try{parsed=JSON.parse(match[1]);}catch(e){ logEvent('warn','bg','clawtab_cmd JSON parse failed', { msgId: msg.id, error: e.message, snippet: match[1]?.slice(0,200) }); continue; }
       if (parsed?.type==='clawtab_cmd') await handleCmd(parsed);
     }
     schedulePoll(S.pollInterval);
   } catch(e) {
+    logEvent('warn','bg','doPoll chat.history failed, backing off', { error: e.message, backoff: Math.min(S.pollBackoff*2, POLL_MAX_MS) });
     S.pollBackoff=Math.min(S.pollBackoff*2,POLL_MAX_MS);
     schedulePoll(S.pollBackoff);
   }
@@ -486,15 +579,23 @@ async function doPoll() {
 
 async function handleCmd(cmd) {
   const {cmdId,agentId,action,payload,issuedAt,timeout=CMD_EXPIRE_MS}=cmd;
+  const t0 = Date.now();
+
+  logEvent('info','bg','cmd received', { cmdId, action, agentId, payloadSummary: payload ? Object.keys(payload) : null });
 
   // 去重
-  if (S.loop.processedCmds.has(cmdId)) return;
+  if (S.loop.processedCmds.has(cmdId)) {
+    logEvent('info','bg','cmd skipped (dedup)', { cmdId, action });
+    return;
+  }
   // 过期
   if (issuedAt&&Date.now()-issuedAt>timeout) {
+    logEvent('warn','bg','cmd expired', { cmdId, action, ageMs: Date.now()-issuedAt, timeout });
     await sendResult({cmdId,ok:false,error:'Command expired',errorCode:'EXPIRED'}); return;
   }
   // 占用（只有 perceive 可以打断，act 不行）
   if (['acting','perceiving'].includes(S.loop.status)&&action!=='cancel') {
+    logEvent('warn','bg','cmd rejected BUSY', { cmdId, action, busyStatus: S.loop.status, goal: S.loop.goal });
     await sendResult({cmdId,ok:false,error:`Browser is busy: ${S.loop.status} (task: ${S.loop.goal})`,errorCode:'BUSY',busyStatus:S.loop.status}); return;
   }
 
@@ -512,8 +613,14 @@ async function handleCmd(cmd) {
       case 'task_done':  handleTaskDone(cmd);  await sendResult({cmdId,ok:true}); break;
       case 'task_fail':  handleTaskFail(cmd);  await sendResult({cmdId,ok:true}); break;
       case 'cancel':   await handleCancel(cmd); break;
-      default: await sendResult({cmdId,ok:false,error:`Unknown action: ${action}`,errorCode:'UNKNOWN_ACTION'});
+      default:
+        logEvent('warn','bg','cmd unknown action', { cmdId, action });
+        await sendResult({cmdId,ok:false,error:`Unknown action: ${action}`,errorCode:'UNKNOWN_ACTION'});
     }
+    logEvent('info','bg','cmd done', { cmdId, action, durationMs: Date.now()-t0 });
+  } catch(e) {
+    logEvent('error','bg','cmd threw uncaught', { cmdId, action, error: e.message, durationMs: Date.now()-t0 });
+    throw e;
   } finally {
     S.pollPaused=false;
     schedulePoll(300); // 完成后快速轮询
@@ -564,30 +671,52 @@ async function handleCancel({cmdId}) {
 async function handlePerceive({cmdId,payload}) {
   const {tabId,include=['screenshot','title','url','dom']}=payload||{};
   const targetTabId=tabId||S.loop.tabId||(await getActiveTabId());
+  logEvent('info','bg','perceive start', { cmdId, targetTabId, include });
 
   setLoopStatus('perceiving','Analyzing page…');
   const stepStart=Date.now();
 
   try {
     const tab=await chrome.tabs.get(targetTabId);
+    logEvent('info','bg','perceive target tab', { tabId: targetTabId, url: tab.url, title: tab.title?.slice(0,60) });
     const result={url:tab.url,title:tab.title,tabId:targetTabId};
 
     if (include.includes('screenshot')||include.includes('all')) {
       await chrome.tabs.update(targetTabId,{active:true});
       await new Promise(r=>setTimeout(r,200));
-      result.screenshot=await chrome.tabs.captureVisibleTab(tab.windowId,{format:'jpeg',quality:60});
-      S.loop.lastScreenshot=result.screenshot;
+      try {
+        result.screenshot=await chrome.tabs.captureVisibleTab(tab.windowId,{format:'jpeg',quality:60});
+        S.loop.lastScreenshot=result.screenshot;
+        logEvent('info','bg','perceive screenshot ok', { bytes: result.screenshot?.length || 0 });
+      } catch(e) {
+        logEvent('error','bg','perceive screenshot failed', { error: e.message, windowId: tab.windowId, tabUrl: tab.url });
+        throw e;
+      }
     }
 
     if (include.includes('dom')||include.includes('all')) {
-      const res=await chrome.scripting.executeScript({target:{tabId:targetTabId},func:extractDOM});
-      result.dom=res?.[0]?.result||{};
+      try {
+        const res=await chrome.scripting.executeScript({target:{tabId:targetTabId},func:extractDOM});
+        result.dom=res?.[0]?.result||{};
+        logEvent('info','bg','perceive dom ok', {
+          hasSimplified: !!result.dom?.simplified,
+          interactiveCount: Array.isArray(result.dom?.interactive) ? result.dom.interactive.length : 0,
+          title: result.dom?.title?.slice(0,40),
+        });
+      } catch(e) {
+        logEvent('error','bg','perceive dom extraction failed', { error: e.message, tabUrl: tab.url });
+        throw e;
+      }
     }
 
     if (include.includes('scroll_position')) {
-      const res=await chrome.scripting.executeScript({target:{tabId:targetTabId},world:'MAIN',
-        func:()=>({x:window.scrollX,y:window.scrollY,height:document.documentElement.scrollHeight})});
-      result.scrollPosition=res?.[0]?.result||{};
+      try {
+        const res=await chrome.scripting.executeScript({target:{tabId:targetTabId},world:'MAIN',
+          func:()=>({x:window.scrollX,y:window.scrollY,height:document.documentElement.scrollHeight})});
+        result.scrollPosition=res?.[0]?.result||{};
+      } catch(e) {
+        logEvent('warn','bg','perceive scroll_position failed', { error: e.message });
+      }
     }
 
     S.loop.lastUrl=result.url; S.loop.lastTitle=result.title;
@@ -596,8 +725,10 @@ async function handlePerceive({cmdId,payload}) {
     pushHistory({op:'perceive',desc:`Analyzed: ${tab.title?.slice(0,40)||tab.url}`,status:'done',durationMs:Date.now()-stepStart});
     setLoopStatus('thinking','Thinking…');
 
+    logEvent('info','bg','perceive done, sending result', { cmdId, durationMs: Date.now()-stepStart, keys: Object.keys(result) });
     await sendResult({cmdId,ok:true,data:result});
   } catch(e) {
+    logEvent('error','bg','perceive failed', { cmdId, error: e.message, durationMs: Date.now()-stepStart });
     pushHistory({op:'perceive',desc:'Analyze failed',status:'failed',durationMs:Date.now()-stepStart});
     setLoopStatus(S.loop.status==='idle'?'idle':'thinking',`Perceive failed: ${e.message}`);
     await sendResult({cmdId,ok:false,error:e.message,errorCode:'PERCEIVE_FAILED'});
@@ -651,6 +782,7 @@ async function handleAct({cmdId,payload}) {
   const targetTabId=tabId||S.loop.tabId||(await getActiveTabId());
 
   const opDesc=describeOp(op,target,value);
+  logEvent('info','bg','act start', { cmdId, op, targetTabId, target: typeof target === 'string' ? target.slice(0,80) : target, value: typeof value === 'string' ? value.slice(0,80) : value, timeout });
   setLoopStatus('acting',opDesc);
   const stepStart=Date.now();
 
@@ -669,14 +801,16 @@ async function handleAct({cmdId,payload}) {
         S.loop.lastScreenshot=result.screenshot;
         result.urlAfter=tab.url; result.titleAfter=tab.title;
         S.loop.lastUrl=tab.url; S.loop.lastTitle=tab.title;
-      } catch(_){}
+      } catch(e){ logEvent('warn','bg','act post-screenshot failed', { error: e.message }); }
     }
 
     S.loop.stepIndex++;
     pushHistory({op,desc:opDesc,status:'done',durationMs:Date.now()-stepStart});
     setLoopStatus('thinking','Thinking…');
+    logEvent('info','bg','act ok', { cmdId, op, durationMs: Date.now()-stepStart });
     await sendResult({cmdId,ok:true,data:result});
   } catch(e) {
+    logEvent('error','bg','act failed', { cmdId, op, error: e.message, durationMs: Date.now()-stepStart });
     pushHistory({op,desc:opDesc,status:'failed',durationMs:Date.now()-stepStart,error:e.message});
     setLoopStatus('thinking',`Act failed: ${e.message}`);
     await sendResult({cmdId,ok:false,error:e.message,errorCode:'ACT_FAILED',op});
@@ -992,8 +1126,12 @@ function blobToDataURL(blob) {
 
 async function sendResult(result) {
   const msg=JSON.stringify({type:'clawtab_result',...result,browserId:S.browserId,ts:Date.now()},null,2);
-  try { await wsRequest('chat.send',{sessionKey:S.sessionKey,message:'```json\n'+msg+'\n```',deliver:false,idempotencyKey:crypto.randomUUID()},8000); }
-  catch(e) { console.warn('[ClawTab] sendResult failed:',e.message); }
+  try {
+    await wsRequest('chat.send',{sessionKey:S.sessionKey,message:'```json\n'+msg+'\n```',deliver:false,idempotencyKey:crypto.randomUUID()},8000);
+    logEvent('info','bg','sendResult delivered', { cmdId: result.cmdId, ok: result.ok, errorCode: result.errorCode });
+  } catch(e) {
+    logEvent('error','bg','sendResult failed', { cmdId: result.cmdId, ok: result.ok, error: e.message });
+  }
 }
 
 async function sendHandshake() {
@@ -1001,12 +1139,12 @@ async function sendHandshake() {
   //  1) persistent storage flag (across SW restarts)
   //  2) in-process in-flight lock (across concurrent connect.ok handlers)
   //  3) post-set re-check of the storage flag (covers SW-restart races)
-  if (S.handshakeInFlight) return;
+  if (S.handshakeInFlight) { logEvent('info','bg','sendHandshake skipped (in-flight lock)'); return; }
   S.handshakeInFlight = true;
   const hsKey=`hs_${S.sessionKey}`;
   try {
     const stored = await chrome.storage.local.get([hsKey]);
-    if (stored[hsKey]) return; // already sent (or already attempted) earlier
+    if (stored[hsKey]) { logEvent('info','bg','sendHandshake skipped (flag already set)', { hsKey }); return; }
     await chrome.storage.local.set({[hsKey]:true}); // mark BEFORE the network call
     const tabs = await chrome.tabs.query({});
     const PROTOCOL_URL = 'https://raw.githubusercontent.com/parksben/clawtab/main/AGENT_PROTOCOL.md';
@@ -1020,13 +1158,15 @@ async function sendHandshake() {
       `${PROTOCOL_URL}`,
     ].join('\n');
     try {
+      logEvent('info','bg','sendHandshake dispatching', { sessionKey: S.sessionKey, tabCount: tabs.length });
       await wsRequest('chat.send', { sessionKey: S.sessionKey, message: text, deliver: true, idempotencyKey: 'hs-' + S.sessionKey }, 8000);
+      logEvent('info','bg','sendHandshake delivered');
     } catch(e) {
       // Intentionally do NOT remove hsKey on error: a WS drop mid-request can
       // reject our promise even though the Gateway already stored the message.
       // Removing the flag is what caused the agent to receive (and respond to)
       // a duplicate handshake on every reconnect.
-      console.warn('[ClawTab] handshake send error (keeping hs flag to avoid dupes):', e.message);
+      logEvent('warn','bg','sendHandshake network error (keeping hs flag)', { error: e.message });
     }
   } finally {
     S.handshakeInFlight = false;
@@ -1090,7 +1230,7 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
           // Explicit WS check — wsRequest throws "not connected" otherwise
           if (!S.wsConnected || !S.ws || S.ws.readyState !== WebSocket.OPEN) {
             const wsState = S.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][S.ws.readyState] : 'NULL';
-            console.warn('[ClawTab] sidebar_ensure_and_send: WS not ready, state='+wsState);
+            logEvent('warn','bg','sidebar_ensure_and_send: WS not ready', { wsState });
             sendResponse({ok:false, error:`WebSocket 未连接（${wsState}），请等待重连后重试`});
             return;
           }
@@ -1099,9 +1239,10 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
             // and picks up the user's message immediately.  deliver:false is used
             // only for sendResult (browser-side ACK) which the agent polls for.
             await wsRequest('chat.send',{sessionKey:msg.sessionKey,message:msg.message,deliver:true,idempotencyKey:crypto.randomUUID()},10000);
+            logEvent('info','bg','sidebar user message sent', { len: msg.message?.length || 0 });
             sendResponse({ok:true});
           } catch(e) {
-            console.error('[ClawTab] sidebar_ensure_and_send failed:', e.message, '| code:', e.code);
+            logEvent('error','bg','sidebar_ensure_and_send failed', { error: e.message, code: e.code });
             sendResponse({ok:false, error:e.message, code: e.code||''});
           }
         })();
@@ -1120,6 +1261,71 @@ chrome.runtime.onMessage.addListener((msg,_,sendResponse)=>{
         sendResponse({ok:true}); break;
 
       case 'sidebar_closed':
+        sendResponse({ok:true}); break;
+
+      // ── Diagnostic logging handlers ──
+      case 'log_event':
+        // Inbound log from sidebar/content. Never reject — logging should be
+        // best-effort and must not loop into more log events on failure.
+        try { logEvent(msg.level||'info', msg.src||'ext', msg.msg||'', msg.data); } catch(_) {}
+        sendResponse({ok:true}); break;
+
+      case 'diag_get':
+        (async()=>{
+          // Return a full diagnostic bundle that the sidebar can format into a
+          // downloadable text file. Logs are served straight from the in-memory
+          // ring buffer to avoid races with the debounced persist.
+          const cfg = await chrome.storage.local.get([
+            'gatewayUrl','gatewayToken','browserName','deviceToken','manualDisconnect',
+          ]);
+          let history = [];
+          if (S.wsConnected && S.sessionKey) {
+            try {
+              const res = await wsRequest('chat.history',{sessionKey:S.sessionKey,limit:50},8000);
+              history = res.messages || [];
+            } catch(e) {
+              logEvent('warn','bg','diag_get chat.history failed',{error:e.message});
+            }
+          }
+          sendResponse({
+            ok: true,
+            version: VERSION,
+            generatedAt: Date.now(),
+            state: {
+              wsConnected:     S.wsConnected,
+              pairingPending:  S.pairingPending,
+              reconnecting:   !S.wsConnected && !!S.wsUrl && !S.pairingPending,
+              wsGaveUp:        S.wsGaveUp,
+              wsReconnectCount:S.wsReconnectCount,
+              sessionKey:      S.sessionKey,
+              browserId:       S.browserId,
+              deviceId:        S.deviceIdentity?.id || '',
+              lastSeenMsgId:   S.lastSeenMsgId,
+              lastCmd:         S.lastCmd,
+              tabCount:        S.tabCount,
+              loop: {
+                status:     S.loop.status,
+                goal:       S.loop.goal,
+                agentId:    S.loop.agentId,
+                stepIndex:  S.loop.stepIndex,
+                statusText: S.loop.statusText,
+                errorMsg:   S.loop.errorMsg,
+                startedAt:  S.loop.startedAt,
+                history:    S.loop.history.slice(-16),
+              },
+            },
+            config: redactConfig(cfg),
+            logs: S.logs.slice(),
+            chatHistory: history,
+          });
+        })();
+        return true;
+
+      case 'log_clear':
+        S.logs = [];
+        clearTimeout(S.logPersistTimer); S.logPersistTimer = null;
+        chrome.storage.local.set({ diag_logs: [] }).catch(() => {});
+        logEvent('info','bg','log cleared by user');
         sendResponse({ok:true}); break;
 
       // ── Element picker handlers ──
@@ -1328,11 +1534,14 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 async function init() {
   drawIcon('idle');
+  await loadLogs();
+  logEvent('info','bg','SW init', { version: VERSION });
   S.deviceIdentity=await loadOrCreateDevice();
   const data=await chrome.storage.local.get(['gatewayUrl','gatewayToken','browserName','manualDisconnect']);
-  if(data.manualDisconnect) { S.wsManualDisconnect=true; return; }
+  if(data.manualDisconnect) { S.wsManualDisconnect=true; logEvent('info','bg','init: manual disconnect flag set, staying idle'); return; }
   if(data.gatewayUrl&&data.gatewayToken&&!S.ws&&!S.wsConnected) {
     S.wsReconnectCount=0; S.wsGaveUp=false; S.wsReconnectDelay=1000;
+    logEvent('info','bg','init: auto-connect with stored config');
     await wsConnect(data.gatewayUrl,data.gatewayToken,data.browserName||'browser');
   }
 }
