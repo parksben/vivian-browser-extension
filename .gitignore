@@ -3,3 +3,7 @@ dist
 .vite
 *.log
 .DS_Store
+
+# CRX packing artifacts (built by `pnpm pack:crx` / GitHub Actions)
+*.crx
+*.pem

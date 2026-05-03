@@ -14,7 +14,18 @@
 
 ## Quick Start
 
-### 1. Install the extension
+### Option A — Install a prebuilt `.crx` (recommended for users)
+
+Every push to `main` produces a fresh `.crx` via GitHub Actions. The Actions UI wraps artifacts in a zip when you download them, so the unwrap path is:
+
+1. Open the latest run on the **[Build extension](../../actions/workflows/build.yml)** page.
+2. Download the `clawtab-crx` artifact at the bottom (it arrives as `clawtab-crx.zip`).
+3. Unzip — inside is `clawtab.crx`.
+4. `chrome://extensions/` → enable **Developer mode** → drag the `.crx` onto the page.
+
+Tagged releases (`v*`) additionally publish the `.crx` directly on the **Releases** page so the download link doesn't expire and isn't zip-wrapped.
+
+### Option B — Build from source
 
 1. Download: **[clawtab-main.zip](https://github.com/parksben/clawtab/archive/refs/heads/main.zip)**
 2. Unzip the archive, then in that folder run:
@@ -78,16 +89,42 @@ docs/TECH_DESIGN.md      # how it's built + key invariants
 
 ## Development
 
+The recommended loop is **`pnpm dev`** — Vite serves the bundle to a live `dist/`, the sidepanel hot-reloads on save, and the background / content scripts are rebuilt and Chrome reloads the extension automatically. **You only need to do `Load unpacked → dist/` once**; everything after that is just save + see.
+
+```bash
+pnpm install     # once
+pnpm dev         # leave running; chrome://extensions → Load unpacked → dist/
+```
+
+What hot-reloads vs. needs intervention:
+
+| Edit | Effect |
+|------|--------|
+| `src/sidebar/**` (React component, CSS, i18n) | Instant HMR inside the open sidepanel |
+| `src/background/index.ts` | Rebuilt + Chrome auto-reloads the extension. Reopen the sidepanel if it was open. |
+| `src/content/index.ts` | Rebuilt + Chrome auto-reloads. **Refresh any tab** that already had the old content script. |
+| `src/manifest.ts` | Rebuilt + Chrome auto-reloads. |
+
+Other scripts:
+
 | Command | Purpose |
 |---------|---------|
-| `pnpm install` | Install deps (once) |
-| `pnpm build` | One-shot production build into `dist/` |
-| `pnpm build:watch` | Rebuild on file change — pair with **Reload extension** in `chrome://extensions/` |
+| `pnpm build` | One-shot production build into `dist/` (used by CI + the CRX packer) |
+| `pnpm build:watch` | Same as `build` but in watch mode — useful when you want a stable, dev-server-free `dist/` (e.g. for sharing) |
+| `pnpm pack:crx` | Run after `pnpm build` to produce `clawtab.crx` (and `clawtab-{version}.crx`). Picks up `key.pem` if present, otherwise generates an ephemeral signing key. |
 | `pnpm typecheck` | `tsc --noEmit` over `src/` |
-| `pnpm test` | Run Vitest test suite (currently 36 tests covering message dedup + reducer state machine) |
+| `pnpm test` | Run Vitest suite (36 tests covering message dedup + reducer state machine) |
 | `pnpm test:watch` | Vitest in watch mode |
 
-There is no Vite dev server / HMR flow — sidepanel HMR is flaky inside `@crxjs`. Use `pnpm build:watch` plus a manual extension reload instead.
+### CI / release flow
+
+`.github/workflows/build.yml` runs on every push to `main`:
+
+1. `pnpm install` → `pnpm typecheck` → `pnpm test` → `pnpm build` → `pnpm pack:crx`
+2. Uploads `clawtab.crx` + `clawtab-{version}.crx` as a 30-day workflow artifact.
+3. On tag pushes matching `v*`, additionally publishes a GitHub Release with the `.crx` files attached.
+
+If you set the `CLAWTAB_CRX_KEY` repo secret to the contents of a 2048-bit RSA private key (PEM), the action signs CRX builds with the same key across runs. Without the secret, CI generates an ephemeral signing key per run — that still installs cleanly because Chrome derives the extension ID from `manifest.json.key`, not from the signing key.
 
 ## Privacy & Security
 

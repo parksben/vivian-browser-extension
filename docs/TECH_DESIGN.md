@@ -2,15 +2,73 @@
 
 > 记录 ClawTab 扩展的整体架构、关键设计选择以及"为什么这么做"。
 
-## 技术栈（迁移中）
+## 技术栈
 
-目前处于 Phase 3。完成迁移后的目标：**React + TypeScript + Tailwind + Vite + @crxjs/vite-plugin**。
-历史上是纯原生 JS、无构建步骤；迁移分阶段推进，每个阶段都能构建出可加载的 `dist/`。详见 `## 迁移路线` 一节。
+**React 19 + TypeScript 5 (strict) + Tailwind v3 + Vite 6 + @crxjs/vite-plugin v2**，pnpm 管理。
 
-- **构建**：Vite + `@crxjs/vite-plugin` 处理 MV3 manifest；`pnpm build` 输出 `dist/`，`pnpm build:watch` 重复构建。
+- **构建**：`pnpm build` 输出 `dist/`，`pnpm build:watch` 重复构建。生产产物自包含，可直接 `Load unpacked dist/`。
+- **开发**：`pnpm dev` 启 Vite 开发服务器（端口 5173，`strictPort:true`）+ HMR；浏览器只需 Load unpacked `dist/` 一次。详见 `## 开发流程` 一节。
 - **类型**：严格模式 TypeScript，共享类型放 `src/shared/types/`。
-- **Markdown**：`marked.js` 仍然 bundle 在 `sidebar/lib/`（Phase 4 会改 import 形式）。
-- **图标**：`shared/icons.js` 内置 Lucide SVG sprite；Phase 4 接入 React 后改用 `lucide-react`。
+- **Markdown**：`marked` 走 npm import（Phase 4 完成）。
+- **图标**：`lucide-react` 命名导入，禁止混用其它 icon 库。
+
+## 开发流程
+
+主路径就是 `pnpm dev`：
+
+```bash
+pnpm install        # 一次
+pnpm dev            # 后台跑
+# chrome://extensions/ → Load unpacked → dist/   （也只做一次）
+```
+
+之后改代码，每种文件的反应是：
+
+| 编辑路径 | 反应 |
+|----------|------|
+| `src/sidebar/**` | sidepanel 内 React HMR，瞬时刷新，state 保留 |
+| `src/background/index.ts` | 重新打包 → Chrome 自动 reload 整个扩展（`@crxjs` 监听 dist/manifest 变化触发）。SW 内存被清空，需要靠 `chrome.storage.local` 恢复（参见"Service Worker 易失性"一节） |
+| `src/content/index.ts` | 同上 reload。**已经打开的 tab 需要手动刷新**才能装上新版本 content 脚本 |
+| `src/manifest.ts` | 重新打包 → reload |
+
+### 为什么 dev 模式下的 `dist/` 不能直接拿去发布
+
+`pnpm dev` 写出的 `dist/manifest.json` 让 sidepanel HTML import `http://localhost:5173/...`，关掉 Vite 进程之后这个 dist 立刻失效。要发布或归档必须走 `pnpm build`。
+
+### 为什么不用 `vite preview`
+
+@crxjs 用 `chrome.runtime` 协议拼出 sidepanel 的 HMR client，这套是基于 Vite dev server 的特殊路径，`vite preview` 模式拿不到。所以工作流就一个：开发 `pnpm dev`，发布 `pnpm build`。
+
+## 打包与发布
+
+### 本地打 `.crx`
+
+```bash
+pnpm build && pnpm pack:crx
+```
+
+`scripts/pack-crx.mjs` 调 `crx3` 把 `dist/` 打成两个文件：`clawtab.crx` 和 `clawtab-{version}.crx`（前者方便 CI 写 release 链接，后者方便分发存档）。
+
+### 签名 key 与扩展 ID 的关系
+
+Chrome 把扩展 ID 算作 `manifest.json.key`（公钥）的 SHA-256 截断。**与 CRX 签名所用的私钥无关** —— 签名仅用于校验 CRX 完整性。所以我们的策略：
+
+- 仓库 `manifest.ts` 里硬编码了一个公钥，对应固定 ID `olfpncdbjlggonplhnlnbhkfianddhmp`，所有用户加 `allowedOrigins` 用同一个 origin。
+- CRX 签名私钥可以是任意值。`pack-crx.mjs` 按以下顺序找 key：
+  1. `CLAWTAB_CRX_KEY` 环境变量（CI secret 用这条）
+  2. 仓库根目录的 `key.pem`（已加入 `.gitignore`）
+  3. 都没有就让 `crx3` 临时生成一个 —— 装上去仍然是同一个扩展 ID
+- 想要"跨次构建签名一致"（比如未来上 update manifest），把同一个 RSA 私钥写进仓库 secret `CLAWTAB_CRX_KEY` 即可。
+
+### CI 工作流
+
+`.github/workflows/build.yml`，触发条件三种：
+
+1. **push 到 main** —— typecheck + test + build + pack:crx，产物以 `clawtab-crx` 为名挂上 30 天 workflow artifact。GitHub Web 下载会包一层 zip，里面才是真正的 `.crx`，README 里写明了。
+2. **push tag `v*`** —— 同样跑完前面，再用 `softprops/action-gh-release` 把 `.crx` 直接附到 GitHub Release。这个链接没有 zip 包装、不会过期。
+3. **手动 dispatch** —— 用来重跑某个 commit 上的构建。
+
+CI 用 Node 22 + pnpm 10，`actions/cache` 走 pnpm 内置 cache，整体一次跑约 1–2 分钟。
 
 ## 模块划分
 

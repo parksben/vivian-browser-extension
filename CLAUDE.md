@@ -4,20 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ClawTab is a Chrome Extension (Manifest V3) that connects a browser to an OpenClaw Gateway, enabling AI agents to observe and control browser tabs. The extension is built with **React + TypeScript + Tailwind + Vite + @crxjs/vite-plugin**, with `pnpm` as the package manager. There is no Vite dev server flow — sidepanel HMR inside `@crxjs` is flaky, so the developer loop is `pnpm build:watch` + a manual reload in `chrome://extensions/`.
+ClawTab is a Chrome Extension (Manifest V3) that connects a browser to an OpenClaw Gateway, enabling AI agents to observe and control browser tabs. The extension is built with **React + TypeScript + Tailwind + Vite + @crxjs/vite-plugin**, with `pnpm` as the package manager. Vite's dev server drives a real HMR loop — `pnpm dev` keeps a live `dist/` updated, the sidepanel hot-reloads on save, and Chrome auto-reloads the extension when background / content scripts change.
 
 ## Development Workflow
 
-1. `pnpm install` (once)
-2. `pnpm build:watch` (or `pnpm build` for a one-shot)
-3. Open `chrome://extensions/`, enable **Developer mode**
-4. Click **Load unpacked** → select **`dist/`** (NOT the repo root)
-5. After every code change, the watcher rebuilds `dist/`. Click the **refresh** icon on the extension card to reload it in the running Chrome.
+### Default loop — `pnpm dev`
 
-Other scripts:
-- `pnpm typecheck` — `tsc --noEmit` across `src/`
-- `pnpm test` — Vitest run (~36 tests against `message-utils` + `reducer`)
-- `pnpm test:watch` — Vitest watch mode
+1. `pnpm install` (once)
+2. `pnpm dev` — leaves Vite running and writes a live `dist/`
+3. `chrome://extensions/` → **Developer mode** → **Load unpacked** → select `dist/` (only needs to happen once per machine; the dev server keeps `dist/` valid as you edit)
+4. Edit code:
+   - **`src/sidebar/**`** — sidepanel hot-reloads instantly (React HMR)
+   - **`src/background/index.ts`** — rebuilt; Chrome reloads the extension automatically. Reopen the sidepanel if it was open.
+   - **`src/content/index.ts`** — rebuilt; Chrome reloads. **Refresh any tab** that already had the old content script injected, otherwise the new code only runs in tabs opened after the reload.
+   - **`src/manifest.ts`** — rebuilt; Chrome reloads.
+
+`@crxjs` writes the dev `dist/` so the manifest paths point at the live Vite server (sidepanel HTML imports `http://localhost:5173/...`). Don't ship `dist/` from a `pnpm dev` run — it's not self-contained. Use `pnpm build` for that.
+
+### Other scripts
+
+- `pnpm build` — one-shot production build to a self-contained `dist/`
+- `pnpm build:watch` — same as build but watches; use when you specifically want a dev-server-free `dist/` (rare)
+- `pnpm pack:crx` — after `pnpm build`, packs `dist/` into `clawtab.crx` (and `clawtab-{version}.crx`). Reads `key.pem` if present, else generates an ephemeral signing key.
+- `pnpm typecheck` — `tsc --noEmit` over `src/`
+- `pnpm test` / `pnpm test:watch` — Vitest (~36 tests against `message-utils` + `reducer`)
 
 ## Architecture
 
@@ -87,16 +97,18 @@ Before any code change (including typos), update [docs/REQUIREMENTS.md](docs/REQ
 
 ## After Every Change: Push and Share Download Link
 
-After completing any modification, push to GitHub and share the zip download link with the user:
+After completing any modification, push to GitHub:
 
 ```bash
 git push origin main
 ```
 
-Download link (always points to latest main):
-**https://github.com/parksben/clawtab/archive/refs/heads/main.zip**
+The push triggers `.github/workflows/build.yml` which produces a fresh `clawtab.crx` and uploads it as a workflow artifact. Share the link to the latest run from the **[Build extension](../../actions/workflows/build.yml)** Actions tab; the user downloads the `clawtab-crx` artifact (it arrives as a zip wrapper from GitHub's UI — inside is the real `.crx`) and drags it onto `chrome://extensions/`.
 
-The user has to run `pnpm install && pnpm build` after unzipping (we no longer ship a pre-built `dist/`).
+If a release-link is wanted (clean URL, no zip wrapping, no 30-day expiry), push a `v*` tag — the same workflow attaches the `.crx` files directly to a GitHub Release.
+
+Source-build path (for users who'd rather build themselves):
+**https://github.com/parksben/clawtab/archive/refs/heads/main.zip** → unzip → `pnpm install && pnpm build` → Load unpacked `dist/`.
 
 ## Protocol Reference
 

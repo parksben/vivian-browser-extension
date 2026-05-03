@@ -1,0 +1,80 @@
+name: Build extension
+
+# Triggers:
+#  - every push to main → produces a workflow artifact (downloadable from
+#    the run page) named `clawtab-crx`
+#  - manual dispatch from the Actions tab → same flow, useful for re-running
+#    against a specific commit
+#  - tag pushes matching v* → additionally creates a GitHub Release with the
+#    .crx attached so the download link doesn't expire after 90 days
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed for the release-publish step on tag pushes
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build extension
+        run: pnpm build
+
+      - name: Pack CRX
+        env:
+          CLAWTAB_CRX_KEY: ${{ secrets.CLAWTAB_CRX_KEY }}
+        run: pnpm pack:crx
+
+      - name: Capture build metadata
+        id: meta
+        run: |
+          {
+            echo "version=$(node -p "require('./package.json').version")"
+            echo "shortsha=$(git rev-parse --short HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload CRX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawtab-crx
+          path: |
+            clawtab.crx
+            clawtab-${{ steps.meta.outputs.version }}.crx
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            clawtab.crx
+            clawtab-${{ steps.meta.outputs.version }}.crx
+          generate_release_notes: true
