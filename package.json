@@ -1,0 +1,22 @@
+{
+  "name": "clawtab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Connect your browser to an OpenClaw Gateway, enabling AI agents to observe and control browser tabs.",
+  "scripts": {
+    "build": "vite build",
+    "build:watch": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.4.0",
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

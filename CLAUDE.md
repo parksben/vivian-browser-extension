@@ -10,13 +10,30 @@ ClawTab is a Chrome Extension (Manifest V3) that connects a browser to an OpenCl
 
 ## Development Workflow
 
-**Load/Reload the extension:**
+Two workflows are both supported during the migration (docs/TECH_DESIGN.md "迁移路线"). Pick whichever matches the branch state.
+
+### Legacy vanilla workflow (works through Phase 7)
+
 1. Open `chrome://extensions/`
 2. Enable "Developer mode"
-3. Click "Load unpacked" → select this directory
-4. After edits, click the refresh icon on the extension card
+3. Click "Load unpacked" → select **the repo root**
+4. After editing any file, click the refresh icon on the extension card
 
-There is no build step, no `npm install`, and no test suite. Changes take effect immediately after reloading the extension.
+No build step, no `npm install`. The root `manifest.json` + root-level `background.js` / `sidebar/` / `content/` / `shared/` / `icons/` keep working.
+
+### Vite build workflow (Phase 1+)
+
+1. `pnpm install` once.
+2. `pnpm build` — produces `dist/`.
+3. `chrome://extensions/` → "Load unpacked" → select **`dist/`**.
+4. After editing anything under `src/` (or root files Vite picks up), either rerun `pnpm build` or run `pnpm build:watch` in a terminal. Then click the refresh icon on the extension card.
+
+Scripts:
+- `pnpm build` — one-shot production build to `dist/`.
+- `pnpm build:watch` — rebuild on file change.
+- `pnpm typecheck` — `tsc --noEmit` over `src/`.
+
+There is no `pnpm dev` / HMR dev-server flow today. Sidepanel HMR inside `@crxjs` is flaky — prefer `build:watch` + manual reload. See docs/TECH_DESIGN.md risks §8.
 
 ## Architecture
 

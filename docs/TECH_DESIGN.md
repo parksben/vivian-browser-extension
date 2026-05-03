@@ -236,8 +236,8 @@ sidebar 拿到 bundle 后由 `formatDiagBundle()` 拼成可读纯文本，浏览
 
 | Phase | 范围 | 退出条件 |
 |-------|------|----------|
-| 0 | **docs-only**：本路线图写入 `TECH_DESIGN.md`，`CLAUDE.md` 加一段"迁移进行中"提示。 | 代码零改动。 |
-| 1 | **脚手架**：`package.json` / `tsconfig.json` / `vite.config.ts` / `tailwind.config.ts` / `src/manifest.ts` / `.gitignore`。`@crxjs` 指向**现有**的 `background.js` / `sidebar/*` / `content/*` / `shared/*`。 | `pnpm build` 产出 `dist/`，Load unpacked `dist/` 行为 = Load unpacked 根目录。 |
+| 0 ✅ | **docs-only**：本路线图写入 `TECH_DESIGN.md`，`CLAUDE.md` 加一段"迁移进行中"提示。 | 代码零改动。 |
+| 1 ✅ | **脚手架**：`package.json` / `tsconfig.json` / `vite.config.ts` / `src/manifest.ts` / `.gitignore`。`@crxjs` 指向**现有**的 `background.js` / `sidebar/*` / `content/*` / `shared/*`。 | `pnpm build` 产出 `dist/`，Load unpacked `dist/` 行为 = Load unpacked 根目录。 |
 | 2 | **`content.js` + `shared/types` 迁 TS**。老 `shared/icons.js` 仍通过 `publicDir` 拷给旧 sidebar。 | content 脚本是 `.ts`，其他不变，扩展行为不变。 |
 | 3 | **background.js 模块化迁 TS**（最高风险）。按现有 SECTION 切文件，握手三层防护原样保留。 | 12 个测试流程全部通过：冷连接、WS 掉线重连、SW 手动 Terminate、`/new`、配对、日志导出、拾取+发送、任务取消、agent 切换、SW 重启冷启动、Gateway 掉线恢复、连续快速 connect/disconnect。 |
 | 4 | **接入 Tailwind**，老 `sidebar.css` 仍生效。 | 产物体积变化可忽略。 |
@@ -246,6 +246,14 @@ sidebar 拿到 bundle 后由 `formatDiagBundle()` 拼成可读纯文本，浏览
 | 7 | **ConfigPage + InputArea + 拾取 + 清空上下文 + 诊断**组件化，**删除**老 `sidebar/` + `shared/icons.js` + 根目录 `background.js` / `manifest.json` / `content/`。根目录只留 docs + 构建配置。 | Phase 3 的 12 项测试再跑一遍。 |
 | 8 | **UI 改进**：Tooltip primitive、所有 icon-only 按钮加 tooltip、语言切换改 Globe 图标+动态目标语言 tooltip。 | REQUIREMENTS.md 记录按钮清单与文案。 |
 | 9 | **收尾**：`CLAUDE.md` 里"旧工作流"注释删掉，README 改成 `pnpm build --watch`，包体审计（期望 sidebar JS <300 KB）。 | 迁移结束。 |
+
+### Phase 1 实现注记：`passThroughLegacyFiles` 插件
+
+当前 `sidebar/sidebar.html` 里的三个 `<script>` 标签（`lib/marked.min.js` / `../shared/icons.js` / `sidebar.js`）都是没有 `type="module"` 的传统脚本。Vite 默认只处理 ES module script，对非 module 脚本会打印警告、保留 HTML 里的 `<script src>` 引用、**但不会把被引用的文件拷进 `dist/`**。结果是 `dist/sidebar/sidebar.html` 引用了一堆不存在的路径。
+
+`vite.config.ts` 里 `passThroughLegacyFiles()` 这个 custom plugin 就是为 Phase 1 设计的过渡件：在 `generateBundle` 钩子里直接 `readFileSync` 三个文件再 `emitFile` 回 `dist/` 的原始路径，HTML 的相对 `<script src>` 能解析到。
+
+这三个文件分别在 Phase 7（`sidebar.js`、`marked.min.js`）和 Phase 7（`shared/icons.js`）被 React 版彻底取代，届时这个 plugin 连同它 watch 的 3 个路径一起删除。
 
 ### 本阶段（Phase 0）就是这一节本身
 
