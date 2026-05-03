@@ -2,22 +2,28 @@
 
 > 记录 ClawTab 扩展的整体架构、关键设计选择以及"为什么这么做"。
 
-## 技术栈
+## 技术栈（迁移中）
 
-- **纯原生 JS**：无构建步骤、无 npm、无 framework。Chrome MV3 直接加载。
-- **唯一 vendor 依赖**：`marked.js`（v15.0.12，bundle 在 `sidebar/lib/`）用于 markdown 渲染。
-- **图标**：`shared/icons.js` 内置 Lucide SVG sprite，UI 内任何图标都用其中的 `<use href="#icon-xxx">`。
+目前处于 Phase 3。完成迁移后的目标：**React + TypeScript + Tailwind + Vite + @crxjs/vite-plugin**。
+历史上是纯原生 JS、无构建步骤；迁移分阶段推进，每个阶段都能构建出可加载的 `dist/`。详见 `## 迁移路线` 一节。
+
+- **构建**：Vite + `@crxjs/vite-plugin` 处理 MV3 manifest；`pnpm build` 输出 `dist/`，`pnpm build:watch` 重复构建。
+- **类型**：严格模式 TypeScript，共享类型放 `src/shared/types/`。
+- **Markdown**：`marked.js` 仍然 bundle 在 `sidebar/lib/`（Phase 4 会改 import 形式）。
+- **图标**：`shared/icons.js` 内置 Lucide SVG sprite；Phase 4 接入 React 后改用 `lucide-react`。
 
 ## 模块划分
 
-| 文件 | 角色 |
+| 路径 | 角色 |
 |------|------|
-| `background.js` | Service Worker：管理 WebSocket、命令轮询、Tab 操作的统一入口 |
-| `sidebar/sidebar.js` | 侧边栏 UI（Config + Chat 双页），消息渲染、用户输入 |
-| `content/content.js` | 内容脚本：注入到所有页面，承担 DOM 元素拾取 |
-| `shared/icons.js` | 跨组件共享的 Lucide 图标 sprite |
+| `src/background/index.ts` | Service Worker：管理 WebSocket、命令轮询、Tab 操作的统一入口（从 1590 行的 `background.js` 迁移而来，phase 3） |
+| `src/content/index.ts` | 内容脚本：注入到所有页面，承担 DOM 元素拾取（phase 2） |
+| `src/shared/types/` | 跨组件共享类型（messages / protocol / state / picker） |
+| `src/manifest.ts` | `@crxjs/vite-plugin` 读取的 MV3 manifest 源 |
+| `sidebar/sidebar.html`, `sidebar/sidebar.js`, `sidebar/sidebar.css` | **尚未迁移**，phase 4 会替换为 `src/sidebar/` 下的 React 组件树 |
+| `shared/icons.js` | SVG sprite，phase 4 后会随 sidebar 一起退役 |
 
-三者完全隔离，仅通过 `chrome.runtime.sendMessage` 通信，没有共享内存。
+三者通过 `chrome.runtime.sendMessage` 通信，没有共享内存。所有消息体走 `src/shared/types/messages.ts` 的 discriminated union，加新消息类型时 TS 会在 `src/background/index.ts` 的 switch 里报穷举错误。
 
 ## 连接 / 配对流程
 
