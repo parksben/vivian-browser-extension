@@ -92,7 +92,7 @@ export function InputArea({
     const el = taRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    el.style.height = el.scrollHeight + 'px';
   }, [text]);
 
   const send = () => {
@@ -200,7 +200,7 @@ export function InputArea({
             }
           }}
           onBlur={() => setTimeout(() => setAcOpen(false), 150)}
-          className="max-h-[120px] min-h-[36px] flex-1 resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12.5px] text-slate-900 placeholder:text-slate-400 focus:border-brand-ring focus:outline-none focus:ring-2 focus:ring-brand-ring/30 disabled:bg-slate-100"
+          className="min-h-[36px] flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12.5px] text-slate-900 placeholder:text-slate-400 focus:border-brand-ring focus:outline-none focus:ring-2 focus:ring-brand-ring/30 disabled:bg-slate-100"
         />
         <IconButton
           tooltip={t(lang, 'sendMessage')}

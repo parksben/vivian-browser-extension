@@ -18,6 +18,22 @@
 }
 
 @layer components {
+  /* ─── Custom tooltip bubble (Tooltip.tsx) ─── */
+  .ct-tooltip-bubble {
+    /* Brief fade-in keeps the appearance unobtrusive even at the short
+       250 ms delay. Translate from a couple of pixels so the bubble
+       slides in from the trigger's direction. */
+    animation: ct-tooltip-in 120ms ease-out both;
+  }
+  @keyframes ct-tooltip-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   /* Markdown rendered inside a chat bubble. Kept as one block so the
      nested tag styles don't pollute other surfaces. */
   .md-bubble {

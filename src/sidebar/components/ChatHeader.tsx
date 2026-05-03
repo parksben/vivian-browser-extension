@@ -1,6 +1,7 @@
-import { Download, Globe, Power, Trash2 } from 'lucide-react';
+import { Download, Power, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { IconButton } from './IconButton';
+import { LangBadge } from './LangBadge';
 import { Tooltip } from './Tooltip';
 import { t, type Lang } from '../i18n';
 import { bg, clog } from '../lib/messages';
@@ -136,7 +137,7 @@ export function ChatHeader({
         size="sm"
         onClick={onToggleLang}
       >
-        <Globe size={14} />
+        <LangBadge currentLang={lang} />
       </IconButton>
       <IconButton
         tooltip={t(lang, 'disconnect')}

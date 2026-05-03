@@ -5,12 +5,11 @@ import {
   Download,
   Eye,
   EyeOff,
-  Globe,
   Link as LinkIcon,
   Upload,
 } from 'lucide-react';
 import { IconButton } from './IconButton';
-import { Tooltip } from './Tooltip';
+import { LangBadge } from './LangBadge';
 import { t, type Lang } from '../i18n';
 import { bg, clog } from '../lib/messages';
 
@@ -181,7 +180,7 @@ export function ConfigPage({
             size="sm"
             onClick={onToggleLang}
           >
-            <Globe size={15} />
+            <LangBadge currentLang={lang} />
           </IconButton>
         </header>
         <div className="flex flex-1 flex-col items-center px-4 py-6">
@@ -247,7 +246,7 @@ export function ConfigPage({
           size="sm"
           onClick={onToggleLang}
         >
-          <Globe size={15} />
+          <LangBadge currentLang={lang} />
         </IconButton>
       </header>
       <div className="flex-1 overflow-y-auto px-4 py-4">
@@ -262,26 +261,22 @@ export function ConfigPage({
             {t(lang, 'configTitle')}
           </h2>
           <div className="flex gap-1">
-            <Tooltip label={t(lang, 'exportConfig')}>
-              <button
-                type="button"
-                onClick={onExport}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition hover:bg-slate-50"
-              >
-                <Upload size={12} />
-                <span>{t(lang, 'exportConfig')}</span>
-              </button>
-            </Tooltip>
-            <Tooltip label={t(lang, 'importConfig')}>
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition hover:bg-slate-50"
-              >
-                <Download size={12} />
-                <span>{t(lang, 'importConfig')}</span>
-              </button>
-            </Tooltip>
+            <IconButton
+              tooltip={t(lang, 'exportConfig')}
+              variant="square"
+              size="sm"
+              onClick={onExport}
+            >
+              <Upload size={13} />
+            </IconButton>
+            <IconButton
+              tooltip={t(lang, 'importConfig')}
+              variant="square"
+              size="sm"
+              onClick={() => fileRef.current?.click()}
+            >
+              <Download size={13} />
+            </IconButton>
             <input
               ref={fileRef}
               type="file"
